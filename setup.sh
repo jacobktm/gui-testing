@@ -1,7 +1,7 @@
 #!/bin/bash
 
 INPUT_TOOL="ydotool"
-if [ "$XDG_SESSION_TYPE" == "X11" ]; then
+if [ "$XDG_SESSION_TYPE" == "x11" ]; then
     INPUT_TOOL="xdotool"
 fi
 

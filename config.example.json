@@ -1,0 +1,11 @@
+{
+  "ollama": {
+    "REMOTE_OLLAMA_IP": "<ollama-host-ip>",
+    "REMOTE_OLLAMA_PORT": "11434",
+    "model": "<ollama-model-name>"
+  },
+  "input_tool": "ydotool",
+  "ydotool": {
+    "active_profile": "adaptive"
+  }
+}

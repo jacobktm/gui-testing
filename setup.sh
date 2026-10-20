@@ -1,7 +1,7 @@
 #!/bin/bash
 
 INPUT_TOOL="ydotool"
-if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
+if [ "$XDG_SESSION_TYPE" == "X11" ]; then
     INPUT_TOOL="xdotool"
 fi
 
@@ -10,7 +10,6 @@ fi
 # ==============================================================================
 TARGET_PYTHON=""
 
-# Check from highest down to 3.11 to find the best available target binary
 for version in 13 12 11; do
     if command -v "python3.${version}" &> /dev/null; then
         TARGET_PYTHON="python3.${version}"
@@ -18,7 +17,6 @@ for version in 13 12 11; do
     fi
 done
 
-# If no specific binary was found, check if generic 'python3' satisfies >= 3.11
 if [ -z "$TARGET_PYTHON" ] && command -v python3 &> /dev/null; then
     py_version=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     major=$(echo "$py_version" | cut -d. -f1)
@@ -29,18 +27,14 @@ if [ -z "$TARGET_PYTHON" ] && command -v python3 &> /dev/null; then
     fi
 fi
 
-# If Python 3.11+ is completely missing, add repositories and install it
 if [ -z "$TARGET_PYTHON" ]; then
     echo "Python 3.11 or greater is not installed. Installing Python 3.11..."
-    
-    # deadsnakes PPA is required for older Ubuntu/Pop!_OS releases missing newer runtimes
     if ! grep -q "^deb.*deadsnakes" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
         echo "Adding deadsnakes PPA repository..."
         sudo apt-get update
         sudo apt-get install -y software-properties-common
         sudo add-apt-repository -y ppa:deadsnakes/ppa
     fi
-    
     sudo apt update
     sudo apt install -y python3.11 python3.11-venv python3.11-dev
     TARGET_PYTHON="python3.11"
@@ -52,8 +46,6 @@ echo "Using system execution host: $TARGET_PYTHON ($($TARGET_PYTHON --version))"
 # 2. CHECK AND INSTALL SYSTEM PACKAGES
 # ==============================================================================
 if [ ! -d .venv ]; then
-    # Tie the exact virtual environment subsystem library package to our targeted runtime version
-    # (e.g. python3.11-venv instead of generic python3-venv)
     VENV_PACKAGE="${TARGET_PYTHON}-venv"
     if [ "$TARGET_PYTHON" == "python3" ]; then
         VENV_PACKAGE="python3-venv"
@@ -73,9 +65,7 @@ if [ ! -d .venv ]; then
         sudo apt update && sudo apt install -y "${MISSING_PKGS[@]}"
     fi
 
-    # Initialize the virtual environment using our validated Python binary
     $TARGET_PYTHON -m venv .venv
-    
     . .venv/bin/activate
     python3 -m pip install -U pip
     python3 -m pip install -r requirements.txt
@@ -154,7 +144,11 @@ fi
 if [ "$INPUT_TOOL" == "ydotool" ]; then
     echo "ydotool active. Querying acceleration profile..."
 
-    active_profile=$(sudo libinput list-devices | awk -v RS="" '
+    # Get raw device blocks
+    DEVICES_LOG=$(sudo libinput list-devices)
+
+    # 1. Try to find the profile from an explicit ydotool device
+    active_profile=$(echo "$DEVICES_LOG" | awk -v RS="" '
         /Device:[^\n]*ydotoold/ {
             idx = index($0, "Accel profiles:")
             if (idx > 0) {
@@ -172,6 +166,31 @@ if [ "$INPUT_TOOL" == "ydotool" ]; then
             }
         }
     ')
+
+    # 2. Fallback: If ydotool device isn't up, steal from the hardware Mouse/Pointer [3]
+    if [[ -z "$active_profile" ]]; then
+        echo "-> ydotool device not found in libinput. Fetching hardware mouse profile fallback..."
+        active_profile=$(echo "$DEVICES_LOG" | awk -v RS="" '
+            # Look for devices with pointer capabilities that are actual mice (exclude keyboards/switches)
+            /Capabilities:[^\n]*pointer/ && !/Capabilities:[^\n]*keyboard/ {
+                idx = index($0, "Accel profiles:")
+                if (idx > 0) {
+                    sub_str = substr($0, idx + 15)
+                    nl_idx = index(sub_str, "\n")
+                    if (nl_idx > 0) sub_str = substr(sub_str, 1, nl_idx - 1)
+                    
+                    num_fields = split(sub_str, profiles, /[ \t]+/)
+                    for (i = 1; i <= num_fields; i++) {
+                        if (profiles[i] ~ /^\*/) {
+                            sub(/^\*/, "", profiles[i])
+                            print profiles[i]
+                            exit # Stop at the primary hardware pointer device found
+                        }
+                    }
+                }
+            }
+        ')
+    fi
 
     if [[ -z "$active_profile" ]]; then
         active_profile="unknown"

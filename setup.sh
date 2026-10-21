@@ -87,7 +87,17 @@ if [ "$TARGET_PYTHON" == "python3" ]; then
     VENV_PACKAGE="python3-venv"
 fi
 
-REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "$INPUT_TOOL" "${SCREENSHOT_PKGS[@]}")
+REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "${SCREENSHOT_PKGS[@]}")
+
+# ydotool is built from source (pinned tag) rather than installed via apt;
+# only relevant when ydotool is the active input tool.
+YDOTOOL_TAG="v1.0.4"
+if [ "$INPUT_TOOL" == "ydotool" ]; then
+    REQUIRED_PKGS+=(cmake scdoc build-essential git)
+else
+    REQUIRED_PKGS+=("$INPUT_TOOL")
+fi
+
 MISSING_PKGS=()
 
 for pkg in "${REQUIRED_PKGS[@]}"; do
@@ -103,6 +113,43 @@ if [ ! -d .venv ] || [ "$UPDATE_MODE" == true ]; then
         sudo apt update && sudo apt install -y "${MISSING_PKGS[@]}"
     else
         echo "All system dependencies already installed."
+    fi
+fi
+
+# ==============================================================================
+# 2b. BUILD YDOTOOL FROM SOURCE (pinned tag)
+# ==============================================================================
+if [ "$INPUT_TOOL" == "ydotool" ]; then
+    # Upstream requires CMake 3.22+
+    CMAKE_VER=$(cmake --version 2>/dev/null | head -n1 | awk '{print $3}')
+    CMAKE_OK=$(printf '%s\n' "3.22" "$CMAKE_VER" | sort -V | head -n1)
+    if [ "$CMAKE_OK" != "3.22" ]; then
+        echo "CMake 3.22+ is required to build ydotool (found: ${CMAKE_VER:-none})." >&2
+        echo "Install a newer cmake (e.g. via snap or Kitware's repo) and re-run." >&2
+        exit 1
+    fi
+
+    if [ ! -x /usr/local/bin/ydotool ] || [ "$UPDATE_MODE" == true ]; then
+        echo "Building ydotool $YDOTOOL_TAG from source..."
+        YDOTOOL_BUILD_DIR=$(mktemp -d)
+        git clone --depth 1 --branch "$YDOTOOL_TAG" \
+            https://github.com/ReimuNotMoe/ydotool.git "$YDOTOOL_BUILD_DIR/ydotool"
+        cmake -S "$YDOTOOL_BUILD_DIR/ydotool" -B "$YDOTOOL_BUILD_DIR/ydotool/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSYSTEMD_USER_SERVICE=ON \
+            -DSYSTEMD_SYSTEM_SERVICE=ON
+        cmake --build "$YDOTOOL_BUILD_DIR/ydotool/build" -j"$(nproc)"
+        sudo cmake --install "$YDOTOOL_BUILD_DIR/ydotool/build"
+        rm -rf "$YDOTOOL_BUILD_DIR"
+
+        # The daemon needs /dev/uinput (root), so prefer the system service.
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now ydotool 2>/dev/null \
+            || systemctl --user enable --now ydotool 2>/dev/null \
+            || true
+        echo "ydotool $YDOTOOL_TAG built and installed."
+    else
+        echo "ydotool already installed at /usr/local/bin/ydotool (skipping build)."
     fi
 fi
 

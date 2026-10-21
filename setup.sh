@@ -1,4 +1,23 @@
 #!/bin/bash
+#
+# Usage:
+#   ./setup.sh            First-time setup: installs system deps, creates the
+#                         venv, installs Python deps, and prompts for config.
+#   ./setup.sh --update   Re-checks/reinstalls system deps and refreshes Python
+#                         deps in the existing venv, then re-prompts for config
+#                         fields using current values as defaults (blank = keep).
+
+UPDATE_MODE=false
+for arg in "$@"; do
+    case "$arg" in
+        -u|--update) UPDATE_MODE=true ;;
+        *)
+            echo "Unknown argument: $arg" >&2
+            echo "Usage: $0 [--update]" >&2
+            exit 1
+            ;;
+    esac
+done
 
 INPUT_TOOL="ydotool"
 if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
@@ -63,30 +82,44 @@ echo "Using system execution host: $TARGET_PYTHON ($($TARGET_PYTHON --version))"
 # ==============================================================================
 # 2. CHECK AND INSTALL SYSTEM PACKAGES
 # ==============================================================================
-if [ ! -d .venv ]; then
-    VENV_PACKAGE="${TARGET_PYTHON}-venv"
-    if [ "$TARGET_PYTHON" == "python3" ]; then
-        VENV_PACKAGE="python3-venv"
+VENV_PACKAGE="${TARGET_PYTHON}-venv"
+if [ "$TARGET_PYTHON" == "python3" ]; then
+    VENV_PACKAGE="python3-venv"
+fi
+
+REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "$INPUT_TOOL" "${SCREENSHOT_PKGS[@]}")
+MISSING_PKGS=()
+
+for pkg in "${REQUIRED_PKGS[@]}"; do
+    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "ok installed"; then
+        MISSING_PKGS+=("$pkg")
     fi
+done
 
-    REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "$INPUT_TOOL" "${SCREENSHOT_PKGS[@]}")
-    MISSING_PKGS=()
-
-    for pkg in "${REQUIRED_PKGS[@]}"; do
-        if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "ok installed"; then
-            MISSING_PKGS+=("$pkg")
-        fi
-    done
-
+# On first run (or in update mode) make sure all system packages are present
+if [ ! -d .venv ] || [ "$UPDATE_MODE" == true ]; then
     if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
         echo "Installing missing dependencies: ${MISSING_PKGS[*]}"
         sudo apt update && sudo apt install -y "${MISSING_PKGS[@]}"
+    else
+        echo "All system dependencies already installed."
     fi
+fi
 
+if [ ! -d .venv ]; then
     $TARGET_PYTHON -m venv .venv
-    . .venv/bin/activate
+fi
+
+# Enter the venv and (re)install Python dependencies
+. .venv/bin/activate
+if [ "$UPDATE_MODE" == true ]; then
+    echo "Update mode: refreshing pip and Python dependencies..."
+    python3 -m pip install -U pip
+    python3 -m pip install -U -r requirements.txt
+elif [ ! -f .venv/.deps_installed ]; then
     python3 -m pip install -U pip
     python3 -m pip install -r requirements.txt
+    touch .venv/.deps_installed
 fi
 
 # ==============================================================================
@@ -109,26 +142,41 @@ is_populated() {
 
 echo "=== Ollama Configuration Check ==="
 
-if is_populated ".ollama.REMOTE_OLLAMA_IP"; then
-    ollama_ip=$(echo "$CONFIG_JSON" | jq -r '.ollama.REMOTE_OLLAMA_IP')
-    echo "-> Ollama IP already populated: $ollama_ip"
-else
-    read -p "Enter Remote Ollama IP: " ollama_ip
-fi
+cur_ip=$(echo "$CONFIG_JSON" | jq -r '.ollama.REMOTE_OLLAMA_IP // empty')
+cur_port=$(echo "$CONFIG_JSON" | jq -r '.ollama.REMOTE_OLLAMA_PORT // empty')
+cur_model=$(echo "$CONFIG_JSON" | jq -r '.ollama.model // empty')
 
-if is_populated ".ollama.REMOTE_OLLAMA_PORT"; then
-    ollama_port=$(echo "$CONFIG_JSON" | jq -r '.ollama.REMOTE_OLLAMA_PORT')
-    echo "-> Ollama Port already populated: $ollama_port"
-else
-    read -p "Enter Remote Ollama Port [default: 11434]: " ollama_port
-    ollama_port="${ollama_port:-11434}"
-fi
+if [ "$UPDATE_MODE" == true ]; then
+    read -p "Enter Remote Ollama IP [${cur_ip:-none}]: " ollama_ip
+    ollama_ip="${ollama_ip:-$cur_ip}"
 
-if is_populated ".ollama.model"; then
-    ollama_model=$(echo "$CONFIG_JSON" | jq -r '.ollama.model')
-    echo "-> Ollama Model already populated: $ollama_model"
+    read -p "Enter Remote Ollama Port [${cur_port:-11434}]: " ollama_port
+    ollama_port="${ollama_port:-${cur_port:-11434}}"
+
+    read -p "Enter Ollama Model Name [${cur_model:-none}]: " ollama_model
+    ollama_model="${ollama_model:-$cur_model}"
 else
-    read -p "Enter Ollama Model Name: " ollama_model
+    if is_populated ".ollama.REMOTE_OLLAMA_IP"; then
+        ollama_ip="$cur_ip"
+        echo "-> Ollama IP already populated: $ollama_ip"
+    else
+        read -p "Enter Remote Ollama IP: " ollama_ip
+    fi
+
+    if is_populated ".ollama.REMOTE_OLLAMA_PORT"; then
+        ollama_port="$cur_port"
+        echo "-> Ollama Port already populated: $ollama_port"
+    else
+        read -p "Enter Remote Ollama Port [default: 11434]: " ollama_port
+        ollama_port="${ollama_port:-11434}"
+    fi
+
+    if is_populated ".ollama.model"; then
+        ollama_model="$cur_model"
+        echo "-> Ollama Model already populated: $ollama_model"
+    else
+        read -p "Enter Ollama Model Name: " ollama_model
+    fi
 fi
 
 CONFIG_JSON=$(jq -n \

@@ -7,5 +7,6 @@
   "input_tool": "ydotool",
   "ydotool": {
     "active_profile": "adaptive"
-  }
+  },
+  "screenshot_tool": "cosmic-screenshot"
 }

@@ -5,6 +5,24 @@ if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
     INPUT_TOOL="xdotool"
 fi
 
+# Determine the OS codename (e.g. jammy, noble) to pick release-specific tooling
+if command -v lsb_release &> /dev/null; then
+    OS_CODENAME=$(lsb_release -cs)
+else
+    OS_CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-unknown}")
+fi
+
+# jammy (22.04) uses scrot; noble (24.04) and newer ship cosmic-screenshot
+if [[ "$OS_CODENAME" == "jammy" ]]; then
+    SCREENSHOT_TOOL="scrot"
+    SCREENSHOT_PKGS=(scrot)
+else
+    SCREENSHOT_TOOL="cosmic-screenshot"
+    SCREENSHOT_PKGS=()
+fi
+
+echo "Detected OS codename: $OS_CODENAME -> screenshot tool: $SCREENSHOT_TOOL"
+
 # ==============================================================================
 # 1. VERIFY AND INSTALL MINIMUM PYTHON 3.11+
 # ==============================================================================
@@ -51,7 +69,7 @@ if [ ! -d .venv ]; then
         VENV_PACKAGE="python3-venv"
     fi
 
-    REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "$INPUT_TOOL")
+    REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "$INPUT_TOOL" "${SCREENSHOT_PKGS[@]}")
     MISSING_PKGS=()
 
     for pkg in "${REQUIRED_PKGS[@]}"; do
@@ -139,6 +157,16 @@ if [[ "$existing_tool" != "$INPUT_TOOL" ]]; then
       --argjson existing "$CONFIG_JSON" \
       --arg tool "$INPUT_TOOL" \
       '$existing * {input_tool: $tool}')
+fi
+
+existing_screenshot_tool=$(echo "$CONFIG_JSON" | jq -r '.screenshot_tool // empty')
+
+if [[ "$existing_screenshot_tool" != "$SCREENSHOT_TOOL" ]]; then
+    echo "-> Saving screenshot tool ($SCREENSHOT_TOOL) to configuration..."
+    CONFIG_JSON=$(jq -n \
+      --argjson existing "$CONFIG_JSON" \
+      --arg tool "$SCREENSHOT_TOOL" \
+      '$existing * {screenshot_tool: $tool}')
 fi
 
 echo "$CONFIG_JSON" | jq '.' > "$CONFIG_JSON_FILE"

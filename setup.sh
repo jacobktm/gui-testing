@@ -20,8 +20,9 @@ for arg in "$@"; do
 done
 
 # dotool works on both Wayland and X11 (it drives the Linux uinput layer
-# directly), so a single input tool covers every session type.
-INPUT_TOOL="dotool"
+# directly), so it is used universally and needs no config key. setup.sh just
+# ensures it is built and installed.
+DOTOOL_TAG="1.6"
 
 # Determine the OS codename (e.g. jammy, noble) to pick release-specific tooling
 if command -v lsb_release &> /dev/null; then
@@ -90,7 +91,6 @@ REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "${SCREENSHOT_PKGS[
 
 # dotool is built from source (pinned tag) rather than installed via apt,
 # so pull in its build dependencies instead of the tool package itself.
-DOTOOL_TAG="1.6"
 REQUIRED_PKGS+=(git gcc golang-go libxkbcommon-dev scdoc)
 
 MISSING_PKGS=()
@@ -223,7 +223,7 @@ CONFIG_JSON=$(jq -n \
   | $existing * $new_ollama
   ')
 
-echo "=== Hardware Input Configuration Check ==="
+echo "=== Screenshot Configuration Check ==="
 
 # Build the set of fields this script manages. Any option that is no longer
 # produced here (e.g. a dropped tool's settings) is intentionally absent.
@@ -231,7 +231,6 @@ MANAGED_JSON=$(jq -n \
   --arg ip "$ollama_ip" \
   --arg port "$ollama_port" \
   --arg model "$ollama_model" \
-  --arg input_tool "$INPUT_TOOL" \
   --arg screenshot_tool "$SCREENSHOT_TOOL" \
   '
   {
@@ -240,7 +239,6 @@ MANAGED_JSON=$(jq -n \
       REMOTE_OLLAMA_PORT: $port,
       model: $model
     },
-    input_tool: $input_tool,
     screenshot_tool: $screenshot_tool
   }
   ')
@@ -263,7 +261,6 @@ else
       '$existing * $managed')
 fi
 
-echo "-> Saving active input tool ($INPUT_TOOL) to configuration..."
 echo "-> Saving screenshot tool ($SCREENSHOT_TOOL) to configuration..."
 
 echo "$CONFIG_JSON" | jq '.' > "$CONFIG_JSON_FILE"

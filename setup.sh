@@ -8,6 +8,7 @@
 #                         fields using current values as defaults (blank = keep).
 
 UPDATE_MODE=false
+NEEDS_RELOGIN=false
 for arg in "$@"; do
     case "$arg" in
         -u|--update) UPDATE_MODE=true ;;
@@ -129,6 +130,32 @@ if [ ! -x /usr/local/bin/dotool ] || [ "$UPDATE_MODE" == true ]; then
     # Activate the shipped udev rule so /dev/uinput is group-accessible
     sudo udevadm control --reload
     sudo udevadm trigger
+
+    # dotool needs write access to /dev/uinput, granted to the 'input' group.
+    # Membership changes only take effect on a fresh session (see end of script).
+    sudo groupadd -f input
+    if ! id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
+        sudo usermod -aG input "$USER"
+        NEEDS_RELOGIN=true
+    fi
+
+    # Optional long-running instance so each test needn't re-register the
+    # virtual device. Runs as a user service (a system service would run as
+    # root and create a socket the user can't reach).
+    mkdir -p "$HOME/.config/systemd/user"
+    cat > "$HOME/.config/systemd/user/dotoold.service" <<'EOF'
+[Unit]
+Description=dotool input daemon
+
+[Service]
+ExecStart=/usr/local/bin/dotoold
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --now dotoold 2>/dev/null || true
     echo "dotool $DOTOOL_TAG built and installed."
 else
     echo "dotool already installed at /usr/local/bin/dotool (skipping build)."
@@ -267,3 +294,16 @@ echo "$CONFIG_JSON" | jq '.' > "$CONFIG_JSON_FILE"
 echo "-----------------------------------"
 echo "Current state of $CONFIG_JSON_FILE:"
 cat "$CONFIG_JSON_FILE"
+
+if [ "$NEEDS_RELOGIN" == true ]; then
+    echo ""
+    echo "Added '$USER' to the 'input' group so dotool can access /dev/uinput."
+    echo "This only takes effect after a fresh login session."
+    read -r -p "Reboot now to apply? [y/N] " reboot_ans
+    if [[ "${reboot_ans,,}" == "y" || "${reboot_ans,,}" == "yes" ]]; then
+        echo "Rebooting..."
+        sudo reboot
+    else
+        echo "Skipped. Log out and back in (or reboot) before running the tests."
+    fi
+fi

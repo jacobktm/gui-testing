@@ -19,10 +19,9 @@ for arg in "$@"; do
     esac
 done
 
-INPUT_TOOL="ydotool"
-if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
-    INPUT_TOOL="xdotool"
-fi
+# dotool works on both Wayland and X11 (it drives the Linux uinput layer
+# directly), so a single input tool covers every session type.
+INPUT_TOOL="dotool"
 
 # Determine the OS codename (e.g. jammy, noble) to pick release-specific tooling
 if command -v lsb_release &> /dev/null; then
@@ -89,14 +88,10 @@ fi
 
 REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "${SCREENSHOT_PKGS[@]}")
 
-# ydotool is built from source (pinned tag) rather than installed via apt;
-# only relevant when ydotool is the active input tool.
-YDOTOOL_TAG="v1.0.4"
-if [ "$INPUT_TOOL" == "ydotool" ]; then
-    REQUIRED_PKGS+=(cmake scdoc build-essential git)
-else
-    REQUIRED_PKGS+=("$INPUT_TOOL")
-fi
+# dotool is built from source (pinned tag) rather than installed via apt,
+# so pull in its build dependencies instead of the tool package itself.
+DOTOOL_TAG="1.6"
+REQUIRED_PKGS+=(git gcc golang-go libxkbcommon-dev scdoc)
 
 MISSING_PKGS=()
 
@@ -117,40 +112,26 @@ if [ ! -d .venv ] || [ "$UPDATE_MODE" == true ]; then
 fi
 
 # ==============================================================================
-# 2b. BUILD YDOTOOL FROM SOURCE (pinned tag)
+# 2b. BUILD DOTOOL FROM SOURCE (pinned tag)
 # ==============================================================================
-if [ "$INPUT_TOOL" == "ydotool" ]; then
-    # Upstream requires CMake 3.22+
-    CMAKE_VER=$(cmake --version 2>/dev/null | head -n1 | awk '{print $3}')
-    CMAKE_OK=$(printf '%s\n' "3.22" "$CMAKE_VER" | sort -V | head -n1)
-    if [ "$CMAKE_OK" != "3.22" ]; then
-        echo "CMake 3.22+ is required to build ydotool (found: ${CMAKE_VER:-none})." >&2
-        echo "Install a newer cmake (e.g. via snap or Kitware's repo) and re-run." >&2
-        exit 1
-    fi
+if [ ! -x /usr/local/bin/dotool ] || [ "$UPDATE_MODE" == true ]; then
+    echo "Building dotool $DOTOOL_TAG from source..."
+    DOTOOL_BUILD_DIR=$(mktemp -d)
+    git clone --depth 1 --branch "$DOTOOL_TAG" \
+        https://git.sr.ht/~geb/dotool "$DOTOOL_BUILD_DIR/dotool"
+    (
+        cd "$DOTOOL_BUILD_DIR/dotool" || exit 1
+        ./build.sh || exit 1
+        sudo ./build.sh install || exit 1
+    ) || { echo "dotool build failed." >&2; rm -rf "$DOTOOL_BUILD_DIR"; exit 1; }
+    rm -rf "$DOTOOL_BUILD_DIR"
 
-    if [ ! -x /usr/local/bin/ydotool ] || [ "$UPDATE_MODE" == true ]; then
-        echo "Building ydotool $YDOTOOL_TAG from source..."
-        YDOTOOL_BUILD_DIR=$(mktemp -d)
-        git clone --depth 1 --branch "$YDOTOOL_TAG" \
-            https://github.com/ReimuNotMoe/ydotool.git "$YDOTOOL_BUILD_DIR/ydotool"
-        cmake -S "$YDOTOOL_BUILD_DIR/ydotool" -B "$YDOTOOL_BUILD_DIR/ydotool/build" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSYSTEMD_USER_SERVICE=ON \
-            -DSYSTEMD_SYSTEM_SERVICE=ON
-        cmake --build "$YDOTOOL_BUILD_DIR/ydotool/build" -j"$(nproc)"
-        sudo cmake --install "$YDOTOOL_BUILD_DIR/ydotool/build"
-        rm -rf "$YDOTOOL_BUILD_DIR"
-
-        # The daemon needs /dev/uinput (root), so prefer the system service.
-        sudo systemctl daemon-reload
-        sudo systemctl enable --now ydotool 2>/dev/null \
-            || systemctl --user enable --now ydotool 2>/dev/null \
-            || true
-        echo "ydotool $YDOTOOL_TAG built and installed."
-    else
-        echo "ydotool already installed at /usr/local/bin/ydotool (skipping build)."
-    fi
+    # Activate the shipped udev rule so /dev/uinput is group-accessible
+    sudo udevadm control --reload
+    sudo udevadm trigger
+    echo "dotool $DOTOOL_TAG built and installed."
+else
+    echo "dotool already installed at /usr/local/bin/dotool (skipping build)."
 fi
 
 if [ ! -d .venv ]; then
@@ -244,25 +225,46 @@ CONFIG_JSON=$(jq -n \
 
 echo "=== Hardware Input Configuration Check ==="
 
-existing_tool=$(echo "$CONFIG_JSON" | jq -r '.input_tool // empty')
+# Build the set of fields this script manages. Any option that is no longer
+# produced here (e.g. a dropped tool's settings) is intentionally absent.
+MANAGED_JSON=$(jq -n \
+  --arg ip "$ollama_ip" \
+  --arg port "$ollama_port" \
+  --arg model "$ollama_model" \
+  --arg input_tool "$INPUT_TOOL" \
+  --arg screenshot_tool "$SCREENSHOT_TOOL" \
+  '
+  {
+    ollama: {
+      REMOTE_OLLAMA_IP: $ip,
+      REMOTE_OLLAMA_PORT: $port,
+      model: $model
+    },
+    input_tool: $input_tool,
+    screenshot_tool: $screenshot_tool
+  }
+  ')
 
-if [[ "$existing_tool" != "$INPUT_TOOL" ]]; then
-    echo "-> Saving active input tool ($INPUT_TOOL) to configuration..."
+if [ "$UPDATE_MODE" == true ]; then
+    # Update mode: replace with the managed set, pruning any dropped options.
+    PRUNED=$(jq -n \
+      --argjson existing "$CONFIG_JSON" \
+      --argjson managed "$MANAGED_JSON" \
+      '($existing | keys) - ($managed | keys) | if length > 0 then join(", ") else empty end')
+    if [[ -n "$PRUNED" ]]; then
+        echo "-> Pruning dropped config options: $PRUNED"
+    fi
+    CONFIG_JSON="$MANAGED_JSON"
+else
+    # First-time mode: keep any unrecognized keys, apply managed values on top.
     CONFIG_JSON=$(jq -n \
       --argjson existing "$CONFIG_JSON" \
-      --arg tool "$INPUT_TOOL" \
-      '$existing * {input_tool: $tool}')
+      --argjson managed "$MANAGED_JSON" \
+      '$existing * $managed')
 fi
 
-existing_screenshot_tool=$(echo "$CONFIG_JSON" | jq -r '.screenshot_tool // empty')
-
-if [[ "$existing_screenshot_tool" != "$SCREENSHOT_TOOL" ]]; then
-    echo "-> Saving screenshot tool ($SCREENSHOT_TOOL) to configuration..."
-    CONFIG_JSON=$(jq -n \
-      --argjson existing "$CONFIG_JSON" \
-      --arg tool "$SCREENSHOT_TOOL" \
-      '$existing * {screenshot_tool: $tool}')
-fi
+echo "-> Saving active input tool ($INPUT_TOOL) to configuration..."
+echo "-> Saving screenshot tool ($SCREENSHOT_TOOL) to configuration..."
 
 echo "$CONFIG_JSON" | jq '.' > "$CONFIG_JSON_FILE"
 echo "-----------------------------------"

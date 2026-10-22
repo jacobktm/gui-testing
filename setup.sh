@@ -33,21 +33,24 @@ else
 fi
 
 # Pick the screenshot tool from the session type (x11 vs wayland) and, for
-# wayland, the desktop environment. Fall back to the codename when the session
-# type can't be determined.
-#   x11                     -> scrot (X11 grab)
-#   wayland + COSMIC        -> cosmic-screenshot
-#   wayland + GNOME         -> grim (Wayland-native grab)
+# wayland, the desktop environment. Falls back to the OS codename when the
+# session can't be determined (e.g. run over ssh / in a build context).
+#
+#   x11 (any DE)              -> scrot              (X11 grab)
+#   wayland + COSMIC (Pop!)   -> cosmic-screenshot  (native, no install)
+#   wayland + GNOME (Ubuntu)  -> grim               (Wayland-native grab)
+#   undetermined + jammy      -> scrot
+#   undetermined + otherwise  -> cosmic-screenshot
 SESSION_TYPE="${XDG_SESSION_TYPE,,}"
 DESKTOP_ENV="${XDG_CURRENT_DESKTOP,,}"
 
 if [[ "$SESSION_TYPE" == "x11" ]]; then
     SCREENSHOT_TOOL="scrot"
     SCREENSHOT_PKGS=(scrot)
-elif [[ "$SESSION_TYPE" == "wayland" && "$DESKTOP_ENV" == *"cosmic"* ]]; then
+elif [[ "$DESKTOP_ENV" == *"cosmic"* ]]; then
     SCREENSHOT_TOOL="cosmic-screenshot"
     SCREENSHOT_PKGS=()
-elif [[ "$SESSION_TYPE" == "wayland" && "$DESKTOP_ENV" == *"gnome"* ]]; then
+elif [[ "$DESKTOP_ENV" == *"gnome"* ]]; then
     SCREENSHOT_TOOL="grim"
     SCREENSHOT_PKGS=(grim)
 elif [[ "$OS_CODENAME" == "jammy" ]]; then

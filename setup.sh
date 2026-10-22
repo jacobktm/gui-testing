@@ -32,8 +32,25 @@ else
     OS_CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-unknown}")
 fi
 
-# jammy (22.04) uses scrot; noble (24.04) and newer ship cosmic-screenshot
-if [[ "$OS_CODENAME" == "jammy" ]]; then
+# Pick the screenshot tool from the session type (x11 vs wayland) and, for
+# wayland, the desktop environment. Fall back to the codename when the session
+# type can't be determined.
+#   x11                     -> scrot (X11 grab)
+#   wayland + COSMIC        -> cosmic-screenshot
+#   wayland + GNOME         -> grim (Wayland-native grab)
+SESSION_TYPE="${XDG_SESSION_TYPE,,}"
+DESKTOP_ENV="${XDG_CURRENT_DESKTOP,,}"
+
+if [[ "$SESSION_TYPE" == "x11" ]]; then
+    SCREENSHOT_TOOL="scrot"
+    SCREENSHOT_PKGS=(scrot)
+elif [[ "$SESSION_TYPE" == "wayland" && "$DESKTOP_ENV" == *"cosmic"* ]]; then
+    SCREENSHOT_TOOL="cosmic-screenshot"
+    SCREENSHOT_PKGS=()
+elif [[ "$SESSION_TYPE" == "wayland" && "$DESKTOP_ENV" == *"gnome"* ]]; then
+    SCREENSHOT_TOOL="grim"
+    SCREENSHOT_PKGS=(grim)
+elif [[ "$OS_CODENAME" == "jammy" ]]; then
     SCREENSHOT_TOOL="scrot"
     SCREENSHOT_PKGS=(scrot)
 else
@@ -41,7 +58,7 @@ else
     SCREENSHOT_PKGS=()
 fi
 
-echo "Detected OS codename: $OS_CODENAME -> screenshot tool: $SCREENSHOT_TOOL"
+echo "Detected OS codename: $OS_CODENAME, session: ${SESSION_TYPE:-unknown}, desktop: ${DESKTOP_ENV:-unknown} -> screenshot tool: $SCREENSHOT_TOOL"
 
 # ==============================================================================
 # 1. VERIFY AND INSTALL MINIMUM PYTHON 3.11+

@@ -66,13 +66,9 @@ if [ -z "$TARGET_PYTHON" ] && command -v python3 &> /dev/null; then
 fi
 
 if [ -z "$TARGET_PYTHON" ]; then
+    # python3.11 is available in the standard repos (e.g. Pop!_OS 22.04) but is
+    # not the default-installed version, so pull it in explicitly.
     echo "Python 3.11 or greater is not installed. Installing Python 3.11..."
-    if ! grep -q "^deb.*deadsnakes" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
-        echo "Adding deadsnakes PPA repository..."
-        sudo apt-get update
-        sudo apt-get install -y software-properties-common
-        sudo add-apt-repository -y ppa:deadsnakes/ppa
-    fi
     sudo apt update
     sudo apt install -y python3.11 python3.11-venv python3.11-dev
     TARGET_PYTHON="python3.11"

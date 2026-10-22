@@ -88,7 +88,7 @@ if [ "$TARGET_PYTHON" == "python3" ]; then
     VENV_PACKAGE="python3-venv"
 fi
 
-REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools "${SCREENSHOT_PKGS[@]}")
+REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools python3-gi "${SCREENSHOT_PKGS[@]}")
 
 # dotool is built from source (pinned tag) rather than installed via apt,
 # so pull in its build dependencies instead of the tool package itself.

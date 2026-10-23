@@ -24,14 +24,28 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.get_graphics_power()
         # Accept various states
-        assert res.success or res.data.get("power") in ("on", "off", "on (discrete)", "off (discrete)"), res.summary
+        p = res.data.get("power")
+        assert res.success or p in ("on", "off", "on (discrete)", "off (discrete)"), res.summary
+        # Try setting
+        try:
+            if p and "off" in str(p).lower():
+                wf.set_graphics_power("on")
+            else:
+                wf.set_graphics_power("off")
+                wf.set_graphics_power("on")
+        except Exception:
+            pass
+
 
 
     @pytest.mark.skipif(False, reason="")
     def test_graphics_transitions_all(self, artifacts):
+        from handlers.system76_power import System76Power
+        h = System76Power(artifacts=artifacts)
+        if h.switchable() != "switchable":
+            pytest.skip("not switchable")
         from harness.workflows import System76PowerCLIWorkflow
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics_all()
-        if res.data.get("skipped"):
-            pytest.skip("not switchable")
         assert res.success
+

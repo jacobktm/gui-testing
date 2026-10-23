@@ -7,7 +7,7 @@ from harness.workflows import System76PowerGUIWorkflow
 
 def _os_id():
     # Could be detected from system; default for manual runs
-    return os.environ.get("TEST_OS_ID", "pop-24.04")
+    return os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
 
 
 @pytest.mark.gui
@@ -20,6 +20,11 @@ class TestSystem76PowerGUI:
     def test_detect_power_profile(self, artifacts):
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         res = wf.detect_power_profile(_os_id())
+        assert res.success, res.summary
+
+    def test_check_brightness(self, artifacts):
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.get_brightness()
         assert res.success, res.summary
 
     @pytest.mark.skipif(os.environ.get("TEST_OS_ID") != "pop-22.04", reason="Pop 22.04 only")

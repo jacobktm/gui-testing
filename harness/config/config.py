@@ -71,5 +71,19 @@ def get_screenshot_tool() -> str | None:
     config_path = _config_path()
     if not config_path.exists():
         return None
+    try:
+        with open(config_path, 'r', encoding='utf-8') as config_file:
+            config = json.load(config_file)
+        tool = config.get('screenshot_tool')
+        if isinstance(tool, str):
+            tool = tool.strip()
+            if tool:
+                return tool
+    except Exception:
+        pass
+    return None
+    config_path = _config_path()
+    if not config_path.exists():
+        return None
     with open(config_path, "r", encoding="utf-8") as config_file:
         return json.load(config_file).get("screenshot_tool")

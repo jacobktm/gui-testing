@@ -141,23 +141,11 @@ def resolve_screenshot_tool(tool: str | None = None) -> str:
         tool = str(tool).strip()
         if tool in SCREENSHOT_TOOLS:
             return tool
-        if tool in ("grim", "scrot", "gnome-screenshot"):
-            desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
-            if "cosmic" in desktop:
-                return "cosmic-screenshot"
-            return "gnome-dotool"
         raise ScreenshotError(f"unsupported screenshot tool: {tool!r}")
 
     configured = get_screenshot_tool()
-    if configured:
-        configured = str(configured).strip()
-        if configured in SCREENSHOT_TOOLS:
-            return configured
-        if configured in ("grim", "scrot", "gnome-screenshot"):
-            desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
-            if "cosmic" in desktop:
-                return "cosmic-screenshot"
-            return "gnome-dotool"
+    if configured and configured in SCREENSHOT_TOOLS:
+        return configured
 
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
     if "cosmic" in desktop:

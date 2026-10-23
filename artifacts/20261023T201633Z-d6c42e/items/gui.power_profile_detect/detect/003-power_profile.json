@@ -1,0 +1,6 @@
+{
+  "value": "performance",
+  "normalized": null,
+  "prompt": "Look at this screenshot of the power settings. What power profile is currently active? Give me the response in just a single word, either 'battery', 'balanced', or 'performance'.",
+  "response": "performance"
+}

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gui-testing"
+version = "0.1.0"
+description = "GUI automation test harness driven by screenshots and a multimodal model"
+requires-python = ">=3.11"
+dependencies = [
+    "ollama>=0.6",
+    "pillow>=11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "hypothesis>=6",
+]
+
+[tool.setuptools.packages.find]
+include = ["harness*", "handlers*"]

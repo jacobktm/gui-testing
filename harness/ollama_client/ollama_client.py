@@ -1,6 +1,9 @@
 from ollama import Client
 
-from config import ollama_config
+from ..config import ollama_config
+
+__all__ = ["Ollama"]
+
 
 class Ollama:
     def __init__(self):

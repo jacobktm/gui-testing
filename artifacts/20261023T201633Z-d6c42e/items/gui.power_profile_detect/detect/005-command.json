@@ -1,0 +1,16 @@
+{
+  "handler": "system76_power",
+  "timestamp": "2026-10-23T20:16:41.586392Z",
+  "test_id": "system76_power.gui.profile",
+  "item_id": "gui.power_profile_detect",
+  "phase": "detect",
+  "type": "command",
+  "command": [
+    "system76-power",
+    "graphics"
+  ],
+  "returncode": 0,
+  "stdout": "hybrid\n",
+  "stderr": "",
+  "duration": 0.0021648406982421875
+}

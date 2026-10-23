@@ -1,0 +1,16 @@
+{
+  "handler": "system76_power",
+  "timestamp": "2026-10-23T20:25:28.585823Z",
+  "test_id": "system76_power.cli.profile",
+  "item_id": "cli.power_profiles_can_be_queried_and_set",
+  "phase": "verify",
+  "type": "command",
+  "command": [
+    "system76-power",
+    "graphics"
+  ],
+  "returncode": 0,
+  "stdout": "hybrid\n",
+  "stderr": "",
+  "duration": 0.002300739288330078
+}

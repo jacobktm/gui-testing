@@ -20,6 +20,9 @@ for arg in "$@"; do
     esac
 done
 
+# Run from the project root so relative paths (.venv, config.json) are stable.
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
+
 # dotool works on both Wayland and X11 (it drives the Linux uinput layer
 # directly), so it is used universally and needs no config key. setup.sh just
 # ensures it is built and installed.
@@ -32,33 +35,26 @@ else
     OS_CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-unknown}")
 fi
 
-# Pick the screenshot tool from the session type (x11 vs wayland) and, for
-# wayland, the desktop environment. Falls back to the OS codename when the
-# session can't be determined (e.g. run over ssh / in a build context).
+# Pick the screenshot tool from the desktop environment. Both GNOME releases
+# (Pop!_OS 22.04, Ubuntu 26.04) use the Shift+Print shortcut through dotool, so
+# they share one backend. Falls back to the OS codename when the session can't
+# be determined (e.g. run over ssh / in a build context).
 #
-#   x11 (any DE)              -> scrot              (X11 grab)
-#   wayland + COSMIC (Pop!)   -> cosmic-screenshot  (native, no install)
-#   wayland + GNOME (Ubuntu)  -> grim               (Wayland-native grab)
-#   undetermined + jammy      -> scrot
-#   undetermined + otherwise  -> cosmic-screenshot
+#   COSMIC (Pop!_OS 24.04)     -> cosmic-screenshot
+#   GNOME (Pop!_OS 22.04 etc.) -> gnome-dotool
+#   undetermined + jammy       -> gnome-dotool
+#   undetermined + otherwise   -> cosmic-screenshot
 SESSION_TYPE="${XDG_SESSION_TYPE,,}"
 DESKTOP_ENV="${XDG_CURRENT_DESKTOP,,}"
 
-if [[ "$SESSION_TYPE" == "x11" ]]; then
-    SCREENSHOT_TOOL="scrot"
-    SCREENSHOT_PKGS=(scrot)
-elif [[ "$DESKTOP_ENV" == *"cosmic"* ]]; then
+if [[ "$DESKTOP_ENV" == *"cosmic"* ]]; then
     SCREENSHOT_TOOL="cosmic-screenshot"
-    SCREENSHOT_PKGS=()
 elif [[ "$DESKTOP_ENV" == *"gnome"* ]]; then
-    SCREENSHOT_TOOL="grim"
-    SCREENSHOT_PKGS=(grim)
+    SCREENSHOT_TOOL="gnome-dotool"
 elif [[ "$OS_CODENAME" == "jammy" ]]; then
-    SCREENSHOT_TOOL="scrot"
-    SCREENSHOT_PKGS=(scrot)
+    SCREENSHOT_TOOL="gnome-dotool"
 else
     SCREENSHOT_TOOL="cosmic-screenshot"
-    SCREENSHOT_PKGS=()
 fi
 
 echo "Detected OS codename: $OS_CODENAME, session: ${SESSION_TYPE:-unknown}, desktop: ${DESKTOP_ENV:-unknown} -> screenshot tool: $SCREENSHOT_TOOL"
@@ -104,7 +100,7 @@ if [ "$TARGET_PYTHON" == "python3" ]; then
     VENV_PACKAGE="python3-venv"
 fi
 
-REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools python3-gi "${SCREENSHOT_PKGS[@]}")
+REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools python3-gi)
 
 # dotool is built from source (pinned tag) rather than installed via apt,
 # so pull in its build dependencies instead of the tool package itself.
@@ -177,8 +173,12 @@ else
     echo "dotool already installed at /usr/local/bin/dotool (skipping build)."
 fi
 
+# PyGObject (python3-gi) is installed system-wide via apt, so the venv must be
+# able to see system site packages to import `gi`.
 if [ ! -d .venv ]; then
-    $TARGET_PYTHON -m venv .venv
+    $TARGET_PYTHON -m venv --system-site-packages .venv
+elif ! grep -q "include-system-site-packages = true" .venv/pyvenv.cfg; then
+    sed -i 's/include-system-site-packages = false/include-system-site-packages = true/' .venv/pyvenv.cfg
 fi
 
 # Enter the venv and (re)install Python dependencies
@@ -186,10 +186,10 @@ fi
 if [ "$UPDATE_MODE" == true ]; then
     echo "Update mode: refreshing pip and Python dependencies..."
     python3 -m pip install -U pip
-    python3 -m pip install -U -r requirements.txt
+    python3 -m pip install -U -e ".[dev]"
 elif [ ! -f .venv/.deps_installed ]; then
     python3 -m pip install -U pip
-    python3 -m pip install -r requirements.txt
+    python3 -m pip install -e ".[dev]"
     touch .venv/.deps_installed
 fi
 

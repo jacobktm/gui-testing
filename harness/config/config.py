@@ -1,10 +1,19 @@
 import json
 from pathlib import Path
 
-def _config_path():
-    return Path(__file__).resolve().parent.parent / 'config.json'
+__all__ = [
+    "ollama_config",
+    "set_ollama_ip",
+    "set_ollama_port",
+    "set_ollama_model",
+    "get_screenshot_tool",
+]
 
-def ollama_config():
+
+def _config_path():
+    return Path(__file__).resolve().parents[2] / 'config.json'
+
+def ollama_config() -> dict:
     config = {}
     config_path = _config_path()
     if not config_path.exists():
@@ -58,3 +67,9 @@ def set_ollama_model(model: str):
     with open(config_path, 'w', encoding='utf-8') as config_file:
         json.dump(config, config_file, indent=2, ensure_ascii=False)
 
+def get_screenshot_tool() -> str | None:
+    config_path = _config_path()
+    if not config_path.exists():
+        return None
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        return json.load(config_file).get("screenshot_tool")

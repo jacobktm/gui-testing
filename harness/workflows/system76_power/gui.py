@@ -3,7 +3,7 @@ from __future__ import annotations
 from handlers.brightness import Brightness
 from handlers.system76_power import System76Power
 
-from ...dotool import click
+from ...dotool import click, send_keys
 from ...gui import Coords, GuiDriver
 from ..base import Workflow, WorkflowResult
 
@@ -27,6 +27,13 @@ class System76PowerGUIWorkflow(Workflow):
                     self.driver.click_at(extra)
                 except Exception:
                     pass
+            elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+                try:
+                    extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
+                    if extra:
+                        self.driver.click_at(extra)
+                except Exception:
+                    pass
         except Exception as exc:
             return WorkflowResult(
                 success=False,
@@ -41,15 +48,30 @@ class System76PowerGUIWorkflow(Workflow):
             data={"os_id": os_id},
         )
 
+    def dismiss_menus(self):
+        try:
+            send_keys("key esc\nkey esc\n")
+        except Exception:
+            try:
+                self.driver.click_at((0.1, 0.1))
+                self.driver.click_at((0.1, 0.1))
+            except Exception:
+                pass
+
+
     def set_power_profile_gui(self, profile: str, os_id: str, item_id: str = "gui.power_profile_switch") -> WorkflowResult:
         try:
             self.open_power_settings(os_id)
             if os_id == "pop-22.04":
                 coords = Coords.POP22_PROFILES.get(profile)
+            elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+                coords = Coords.UBUNTU_26.get(f"profile_{profile}")
             else:
-                coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}") or getattr(Coords, "UBUNTU_26", {}).get(f"profile_{profile}")
+                coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
             if coords:
                 self.driver.click_at(coords)
+            if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+                self.dismiss_menus()
             if self.artifacts and item_id:
                 try:
                     self.artifacts.save_text(item_id, "action", f"set profile {profile}\n", step="set")
@@ -58,6 +80,7 @@ class System76PowerGUIWorkflow(Workflow):
             return WorkflowResult(success=True, item_id=item_id, summary=f"profile {profile}", data={"profile": profile})
         except Exception as exc:
             return WorkflowResult(success=False, item_id=item_id, summary=str(exc))
+
 
     def set_graphics_mode_gui(self, mode: str, os_id: str = "pop-22.04", item_id: str = "gui.graphics_switch") -> WorkflowResult:
         try:

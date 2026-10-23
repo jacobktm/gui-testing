@@ -29,10 +29,13 @@ class Coords:
     }
     UBUNTU_26 = {
         "open_settings": OPEN,
-        "profile_battery": (0.955, 0.52),
-        "profile_balanced": (0.955, 0.55),
-        "profile_performance": (0.955, 0.6),
+        "extra_click": (0.875, 0.23),
+        "profile_battery": (0.875, 0.325),
+        "profile_balanced": (0.875, 0.39),
+        "profile_performance": (0.875, 0.35),
     }
+    UBUNTU_26_DISMISS = (0.1, 0.1)  # click outside twice or press esc
+
     POP_22 = {
         "open_settings": OPEN,
         "extra_click": POP22_EXTRA,

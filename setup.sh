@@ -287,7 +287,7 @@ MANAGED_JSON=$(jq -n \
   ')
 
 if [ "$UPDATE_MODE" == true ]; then
-    # Update mode: replace with the managed set, pruning any dropped options.
+    # Update mode: redetect and replace with the managed set, pruning dropped options.
     PRUNED=$(jq -n \
       --argjson existing "$CONFIG_JSON" \
       --argjson managed "$MANAGED_JSON" \

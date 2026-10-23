@@ -4,31 +4,38 @@ __all__ = ["Coords"]
 
 
 class Coords:
-    """Predictable normalized coordinates for known layouts.
+    """Predictable normalized coordinates for known layouts."""
 
-    Pop!_OS 24.04 is the baseline for all three OSes.
-    Pop!_OS 22.04 needs one additional click.
-    Ubuntu 26.04 uses different labels (e.g. 'Power Saver').
-    """
+    OPEN = (0.955, 0.014)
+    POP22_EXTRA = (0.955, 0.20)
 
-    # Pop!_OS 24.04 (baseline)
+    POP22_PROFILES = {
+        "performance": (0.955, 0.6),
+        "balanced": (0.955, 0.55),
+        "battery": (0.955, 0.52),
+    }
+    POP22_GRAPHICS = {
+        "compute": (0.955, 0.45),
+        "hybrid": (0.955, 0.4),
+        "nvidia": (0.955, 0.35),
+        "integrated": (0.955, 0.3),
+    }
+
     POP_24 = {
-        "open_settings": (0.05, 0.05),
-        "power_tab": (0.15, 0.25),
-        "profile_battery": (0.4, 0.35),
-        "profile_balanced": (0.4, 0.42),
-        "profile_performance": (0.4, 0.49),
+        "open_settings": OPEN,
+        "profile_battery": (0.955, 0.52),
+        "profile_balanced": (0.955, 0.55),
+        "profile_performance": (0.955, 0.6),
     }
-
-    # Pop!_OS 22.04 - needs extra click compared to 24.04
-    POP_22 = {
-        **POP_24,
-        "extra_click": (0.5, 0.2),  # Pop 22.04 specific adjustment
-        "graphics_tab": (0.15, 0.35),
-    }
-
-    # Ubuntu 26.04 - similar layout to baseline but different labels
     UBUNTU_26 = {
-        **POP_24,
-        "power_tab": (0.15, 0.28),  # slight adjustment if needed
+        "open_settings": OPEN,
+        "profile_battery": (0.955, 0.52),
+        "profile_balanced": (0.955, 0.55),
+        "profile_performance": (0.955, 0.6),
+    }
+    POP_22 = {
+        "open_settings": OPEN,
+        "extra_click": POP22_EXTRA,
+        **POP22_PROFILES,
+        **{f"graphics_{k}": v for k, v in POP22_GRAPHICS.items()},
     }

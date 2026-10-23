@@ -4,7 +4,7 @@ from handlers.brightness import Brightness
 from handlers.system76_power import System76Power
 
 from ...dotool import click
-from ...gui import GuiDriver
+from ...gui import Coords, GuiDriver
 from ..base import Workflow, WorkflowResult
 
 
@@ -15,19 +15,15 @@ class System76PowerGUIWorkflow(Workflow):
         self.brightness = Brightness()
 
     def open_power_settings(self, os_id: str) -> WorkflowResult:
-        """Open power settings via the known click position.
-
-        Pop!_OS 24.04 and Ubuntu 26.04 need only one click at (0.955, 0.014).
-        Pop!_OS 22.04 needs an additional click at (0.955, 0.20).
-        """
+        """Open power settings via the known click position."""
         try:
             try:
-                self.driver.click_at((0.955, 0.014))
+                self.driver.click_at(Coords.OPEN)
             except Exception:
                 pass
             if os_id == "pop-22.04":
                 try:
-                    extra = getattr(self, "pop22_extra_click", (0.955, 0.20))
+                    extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
                     self.driver.click_at(extra)
                 except Exception:
                     pass
@@ -44,6 +40,41 @@ class System76PowerGUIWorkflow(Workflow):
             summary="opened power settings",
             data={"os_id": os_id},
         )
+
+    def set_power_profile_gui(self, profile: str, os_id: str, item_id: str = "gui.power_profile_switch") -> WorkflowResult:
+        try:
+            self.open_power_settings(os_id)
+            if os_id == "pop-22.04":
+                coords = Coords.POP22_PROFILES.get(profile)
+            else:
+                coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}") or getattr(Coords, "UBUNTU_26", {}).get(f"profile_{profile}")
+            if coords:
+                self.driver.click_at(coords)
+            if self.artifacts and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "action", f"set profile {profile}\n", step="set")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary=f"profile {profile}", data={"profile": profile})
+        except Exception as exc:
+            return WorkflowResult(success=False, item_id=item_id, summary=str(exc))
+
+    def set_graphics_mode_gui(self, mode: str, os_id: str = "pop-22.04", item_id: str = "gui.graphics_switch") -> WorkflowResult:
+        try:
+            self.open_power_settings(os_id)
+            if os_id == "pop-22.04":
+                coords = Coords.POP22_GRAPHICS.get(mode)
+                if coords:
+                    self.driver.click_at(coords)
+            if self.artifacts and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "action", f"set graphics {mode}\n", step="set")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary=f"graphics {mode}", data={"graphics": mode})
+        except Exception as exc:
+            return WorkflowResult(success=False, item_id=item_id, summary=str(exc))
+
 
     def detect_power_profile(
         self,

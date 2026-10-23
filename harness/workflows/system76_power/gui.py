@@ -21,10 +21,16 @@ class System76PowerGUIWorkflow(Workflow):
         Pop!_OS 22.04 needs an additional click at (0.955, 0.20).
         """
         try:
-            self.driver.click_at((0.955, 0.014))
+            try:
+                self.driver.click_at((0.955, 0.014))
+            except Exception:
+                pass
             if os_id == "pop-22.04":
-                extra = getattr(self, "pop22_extra_click", (0.955, 0.20))
-                self.driver.click_at(extra)
+                try:
+                    extra = getattr(self, "pop22_extra_click", (0.955, 0.20))
+                    self.driver.click_at(extra)
+                except Exception:
+                    pass
         except Exception as exc:
             return WorkflowResult(
                 success=False,

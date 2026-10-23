@@ -187,9 +187,11 @@ if [ "$UPDATE_MODE" == true ]; then
     echo "Update mode: refreshing pip and Python dependencies..."
     python3 -m pip install -U pip
     python3 -m pip install -U -e ".[dev]"
+    python3 -m pip install -U pytest
 elif [ ! -f .venv/.deps_installed ]; then
     python3 -m pip install -U pip
     python3 -m pip install -e ".[dev]"
+    python3 -m pip install -U pytest
     touch .venv/.deps_installed
 fi
 

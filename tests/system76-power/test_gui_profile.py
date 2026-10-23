@@ -33,14 +33,15 @@ class TestSystem76PowerGUI:
         # On systems where we can't visually detect reliably, just ensure navigation works
         try:
             res = wf.detect_graphics_mode()
-            if os_id.startswith("ubuntu") or os_id.startswith("pop-24"):
-                # Only skip visual validation on Ubuntu and Pop!_OS 24.04 (COSMIC)
+            if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26"):
+                # Only skip visual validation on Ubuntu and COSMIC
                 return
             assert res.success, res.summary
         except Exception:
-            if os_id.startswith("ubuntu") or os_id.startswith("pop-24"):
+            if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26"):
                 return  # skip visual validation only
             pytest.skip("graphics mode detection not available")
+
 
 
 

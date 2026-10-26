@@ -228,9 +228,60 @@ class System76PowerCLIWorkflow(Workflow):
         # --- Phase: rebooting — (after reboot) verify target, record result ---
         if phase in ("rebooting", "done"):
             current = handler.get_graphics_mode()
-            verified = (current == target)
+            target_ok = (current == target)
 
-            entry = {"from": source, "to": target, "actual": current, "verified": verified}
+            # On Pop!_OS 22.04, also verify via GUI that the extension reflects
+            # the new graphics mode (satisfies "CLI changes reflected in extension").
+            gui_verified = None
+            import os
+            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
+            if not os_id:
+                try:
+                    os_id_parts = {}
+                    with open("/etc/os-release") as f:
+                        for line in f:
+                            if "=" in line:
+                                key, val = line.strip().split("=", 1)
+                                os_id_parts[key] = val.strip().strip('"').lower()
+                    os_id = os_id_parts.get("ID", "")
+                    version = os_id_parts.get("VERSION_ID", "")
+                    if version:
+                        os_id = f"{os_id}-{version}"
+                except Exception:
+                    pass
+            if os_id == "pop-22.04" or os_id.startswith("pop-22"):
+                try:
+                    from ...gui import Coords, GuiDriver
+                    from ..system76_power.gui import System76PowerGUIWorkflow
+                    driver = GuiDriver(artifacts=self.artifacts)
+                    try:
+                        driver.click_at(Coords.OPEN)
+                    except Exception:
+                        pass
+                    try:
+                        driver.click_at(Coords.POP22_EXTRA)
+                    except Exception:
+                        pass
+                    gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
+                    det = gui_wf.detect_graphics_mode(os_id=os_id)
+                    if det.success:
+                        detected = (det.data or {}).get("graphics", "").lower()
+                        gui_verified = (detected == target.lower())
+                    else:
+                        gui_verified = False
+                    try:
+                        from ...dotool import send_keys
+                        send_keys("key esc\nkey esc\n")
+                    except Exception:
+                        pass
+                except Exception:
+                    gui_verified = None
+
+            verified = target_ok
+            if gui_verified is not None:
+                verified = verified and gui_verified
+
+            entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
             results.append(entry)
             done.add((source, target))
             self.persist_state(item_id, "state", {

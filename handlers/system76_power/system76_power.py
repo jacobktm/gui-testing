@@ -208,7 +208,19 @@ class System76Power:
             self._log({'type': 'graphics_power_set_failed', 'state': state, 'stderr': result.get('stderr')})
 
     def restart_daemon(self) -> bool:
-        """Restart the system76-power daemon (requires sudo)."""
+        """Restart the system76-power daemon.
+
+        Tries passwordless sudo first (works when pytest.sh sets up the
+        sudoers rule), then falls back to interactive sudo.
+        """
+        # Try passwordless first.
+        result = self._run(
+            ["sudo", "-n", "systemctl", "restart", "com.system76.PowerDaemon.service"],
+            check=False,
+        )
+        if result.get("returncode") == 0:
+            return True
+        # Fall back to interactive sudo.
         result = self._run(
             ["sudo", "systemctl", "restart", "com.system76.PowerDaemon.service"],
             check=False,
@@ -216,7 +228,16 @@ class System76Power:
         return result.get("returncode") == 0
 
     def reboot(self) -> bool:
+        # Try polkit-based reboot first (works on Pop!_OS without sudo).
         result = self._run(['systemctl', 'reboot'], check=False)
+        if result.get('returncode') in (0, None):
+            return True
+        # Fallback to sudo (needed on some Ubuntu configurations).
+        result = self._run(['sudo', 'systemctl', 'reboot'], check=False)
+        if result.get('returncode') in (0, None):
+            return True
+        # Last resort.
+        result = self._run(['sudo', 'reboot'], check=False)
         return result.get('returncode') in (0, None)
 
     def wait_for_boot(self, timeout: float = 600.0) -> bool:

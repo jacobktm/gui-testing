@@ -76,7 +76,7 @@ class System76Power:
             except Exception:
                 pass
 
-    def _run(self, cmd: list[str], check: bool = False, timeout: float | None = 30.0):
+    def _run(self, cmd: list[str], check: bool = False, timeout: float | None = 120.0):
         started = time.time()
         try:
             result = subprocess.run(
@@ -124,7 +124,7 @@ class System76Power:
             return record
 
     def switchable(self):
-        result = self._run(['system76-power', 'graphics', 'switchable'], check=False)
+        result = self._run(['system76-power', 'graphics', 'switchable'], check=False, timeout=60.0)
         stdout = (result.get('stdout') or '').strip()
         stderr = (result.get('stderr') or '').strip()
         if stdout:
@@ -152,7 +152,7 @@ class System76Power:
                 return False
             idx = self.perf_profiles.index(current)
             profile = self.perf_profiles[(idx + 1) % len(self.perf_profiles)]
-        result = self._run(['system76-power', 'profile', profile], check=False)
+        result = self._run(['system76-power', 'profile', profile], check=False, timeout=60.0)
         time.sleep(1)
         if result['returncode'] == 0:
             self._log({'type': 'perf_profile_switched', 'profile': profile})
@@ -162,7 +162,7 @@ class System76Power:
             return False
 
     def get_perf_profile(self):
-        result = self._run(['system76-power', 'profile'], check=False)
+        result = self._run(['system76-power', 'profile'], check=False, timeout=30.0)
         if result['returncode'] == 0:
             try:
                 output = result['stdout'].split('\n')[0]
@@ -175,7 +175,7 @@ class System76Power:
         return None
 
     def get_graphics_mode(self):
-        result = self._run(['system76-power', 'graphics'], check=False)
+        result = self._run(['system76-power', 'graphics'], check=False, timeout=120.0)
         if result['returncode'] == 0 and result['stdout'].strip():
             try:
                 return result['stdout'].split('\n')[0].strip()
@@ -190,7 +190,7 @@ class System76Power:
                 return
             idx = self.graphics_modes.index(current)
             mode = self.graphics_modes[(idx + 1) % len(self.graphics_modes)]
-        result = self._run(['system76-power', 'graphics', mode], check=False)
+        result = self._run(['system76-power', 'graphics', mode], check=False, timeout=300.0)
         time.sleep(1)
         if result['returncode'] == 0:
             self._log({'type': 'graphics_mode_switched', 'mode': mode})
@@ -200,7 +200,7 @@ class System76Power:
             return False
 
     def get_graphics_power(self):
-        result = self._run(['system76-power', 'graphics', 'power'], check=False)
+        result = self._run(['system76-power', 'graphics', 'power'], check=False, timeout=60.0)
         if result['returncode'] == 0 and result['stdout'].strip():
             try:
                 return result['stdout'].strip().lower()
@@ -211,7 +211,7 @@ class System76Power:
     def set_graphics_power(self, state=None):
         if state not in ('on', 'off'):
             return
-        result = self._run(['system76-power', 'graphics', 'power', state], check=False)
+        result = self._run(['system76-power', 'graphics', 'power', state], check=False, timeout=60.0)
         if result['returncode'] == 0:
             self._log({'type': 'graphics_power_set', 'state': state})
         else:

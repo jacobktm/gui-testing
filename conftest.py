@@ -170,6 +170,16 @@ def pytest_collection_modifyitems(config, items):
         if item.get_closest_marker("reboot") and not item.get_closest_marker("skip")
     ]
 
+    # Run graphics power toggle tests last (they can leave the GPU in a bad
+    # state that affects subsequent tests).
+    def _sort_key(item):
+        name = getattr(item, "name", "") or ""
+        if "graphics_power" in name:
+            return 1
+        return 0
+
+    items.sort(key=_sort_key)
+
 
 def pytest_collection_finish(session):
     """Prepare autologin + resume iff a reboot test will actually execute."""

@@ -101,6 +101,10 @@ class System76PowerCLIWorkflow(Workflow):
         if result.get('returncode') not in (0, None):
             return WorkflowResult(success=False, item_id=item_id, summary=f"switch to integrated failed: {result.get('stderr', '')}", data={"from": current, "to": "integrated", "actual": current, "verified": False})
 
+        # Verify the mode was actually set (before reboot).
+        after_set = handler.get_graphics_mode()
+        print(f"  after set (before reboot): mode = {after_set!r}", flush=True)
+
         self.persist_state(item_id, "state", {
             "kind": "graphics_transition",
             "phase": "rebooting",
@@ -250,6 +254,7 @@ class System76PowerCLIWorkflow(Workflow):
             # Switch to target.
             result = handler._run(['system76-power', 'graphics', target], check=False)
             logged_output = (result.get('stdout') or '').strip()
+            print(f"  system76-power graphics {target}: rc={result.get('returncode')} output={logged_output!r}", flush=True)
             if result.get('returncode') not in (0, None):
                 entry = {"from": source, "to": target, "actual": current, "verified": False, "error": "switch failed"}
                 results.append(entry)
@@ -263,6 +268,10 @@ class System76PowerCLIWorkflow(Workflow):
                     "completed": len(results),
                 })
                 return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (switch failed: {result.get('stderr', '')})", data=entry)
+
+            # Verify mode was set before reboot.
+            pre_reboot_mode = handler.get_graphics_mode()
+            print(f"  before reboot: mode = {pre_reboot_mode!r} (target={target!r})", flush=True)
 
             # Save state BEFORE reboot.
             self.persist_state(item_id, "state", {

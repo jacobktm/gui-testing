@@ -71,11 +71,14 @@ class System76PowerCLIWorkflow(Workflow):
         return WorkflowResult(success=True, item_id=item_id, summary=f"{mode}->{newm}", data={"graphics": newm})
 
     def get_transition_order(self, item_id: str = "cli.graphics_transitions") -> list[tuple[str, str]]:
-        """Determine the order of graphics transitions based on the current mode.
+        """Determine an Eulerian circuit through all (source, target) pairs.
 
-        Returns an ordered list of (source, target) pairs.  The first
-        transition starts from the currently active graphics mode so that
-        no unnecessary mode switch is needed before the first reboot.
+        Starting from the current graphics mode, traverses every directed
+        edge (source -> target, source != target) exactly once.  Because
+        each step's source is the previous step's target, no redundant
+        mode switches are needed between transitions.
+
+        Returns an ordered list of (source, target) tuples.
         """
         handler = System76Power(
             test_id="system76_power.cli.graphics",
@@ -94,26 +97,41 @@ class System76PowerCLIWorkflow(Workflow):
             print(f"  Warning: {current!r} not in modes list, falling back to {modes[0]!r}", flush=True)
             current = modes[0]
 
-        # Start with all transitions originating from the current mode,
-        # then the remaining modes in order.
-        ordered_modes = [current] + [m for m in modes if m != current]
-        transitions = []
-        for source in ordered_modes:
-            for target in modes:
-                if source != target and (source, target) not in transitions:
-                    transitions.append((source, target))
-        return transitions
+        # Build adjacency list: all directed edges source -> target.
+        adj = {m: [t for t in modes if t != m] for m in modes}
+        # Hierholzer's algorithm for Eulerian circuit.
+        stack = [current]
+        route = []
+        while stack:
+            v = stack[-1]
+            if adj[v]:
+                w = adj[v].pop()
+                stack.append(w)
+            else:
+                route.append(stack.pop())
+        route.reverse()
+        # route is a list of nodes; convert to edges.
+        transitions = [(route[i], route[i + 1]) for i in range(len(route) - 1)]
+        # Deduplicate while preserving order (Hierholzer may repeat nodes).
+        seen = set()
+        unique = []
+        for edge in transitions:
+            if edge not in seen:
+                seen.add(edge)
+                unique.append(edge)
+        print(f"Eulerian circuit: {len(unique)} transitions", flush=True)
+        for src, tgt in unique:
+            print(f"  {src} -> {tgt}", flush=True)
+        return unique
 
     def transition_graphics(self, source: str, target: str, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
         """Execute a single graphics mode transition (source -> target).
 
-        Uses a phase machine to survive reboots:
-        - phase "start": switch to source, verify, save, reboot
+        Uses persisted phase to survive reboots:
+        - phase "start":       switch to source, verify, save, reboot
         - phase "source_done": (after reboot) switch to target, verify, save, reboot
         - phase "target_done": (after reboot) verify target, record result
-
-        Each phase saves state BEFORE rebooting so the resumed run knows
-        exactly where to continue.
+        - phase "done":        already completed, return cached result
         """
         handler = System76Power(
             test_id="system76_power.cli.graphics",
@@ -126,7 +144,7 @@ class System76PowerCLIWorkflow(Workflow):
         results = progress.get("results", [])
         done = {(e.get("from"), e.get("to")) for e in results if isinstance(e, dict)}
 
-        # Check if this specific pair was already completed.
+        # Already completed in a previous run.
         if (source, target) in done:
             entry = next((e for e in results if e.get("from") == source and e.get("to") == target), {})
             return WorkflowResult(
@@ -136,21 +154,20 @@ class System76PowerCLIWorkflow(Workflow):
                 data={"from": source, "to": target, "actual": entry.get("actual"), "verified": entry.get("verified", True)},
             )
 
-        # Check if a different pair is in progress.
+        # Determine phase.  Only use saved phase if it's for this same pair.
         in_progress = (progress.get("source"), progress.get("target")) == (source, target)
         phase = progress.get("phase", "start") if in_progress else "start"
 
         current = handler.get_graphics_mode()
 
-        # --- Phase: switch to source ---
+        # --- Phase: start — switch to source, verify, save, reboot ---
         if phase == "start":
+            source_ok = True
             if current != source:
                 handler.switch_graphics_mode(source)
                 current = handler.get_graphics_mode()
-            # Verify source mode took effect.
-            source_ok = (current == source)
+                source_ok = (current == source)
             if not source_ok:
-                # Switch failed; record and stop.
                 entry = {"from": source, "to": target, "actual": current, "verified": False, "error": "source switch failed"}
                 results.append(entry)
                 self.persist_state(item_id, "state", {
@@ -176,14 +193,32 @@ class System76PowerCLIWorkflow(Workflow):
             handler.setup_autologin()
             handler.reboot()
             handler.wait_for_boot()
-            # Process killed by reboot; resumed run continues from source_done.
-            # If we get here (no reboot happened), update phase.
+            # If we survive (no reboot happened), continue.
             current = handler.get_graphics_mode()
             phase = "source_done"
 
-        # --- Phase: switch to target ---
+        # --- Phase: source_done — switch to target, verify, save, reboot ---
         if phase == "source_done":
             current = handler.get_graphics_mode()
+            # Re-verify source stuck after reboot.
+            if current != source:
+                # Source didn't stick; retry source switch.
+                handler.switch_graphics_mode(source)
+                current = handler.get_graphics_mode()
+                if current != source:
+                    entry = {"from": source, "to": target, "actual": current, "verified": False, "error": "source did not stick after reboot"}
+                    results.append(entry)
+                    self.persist_state(item_id, "state", {
+                        "kind": "graphics_transition",
+                        "phase": "done",
+                        "source": source,
+                        "target": target,
+                        "current": current,
+                        "results": results,
+                        "completed": len(results),
+                    })
+                    return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (source did not stick, got {current})", data=entry)
+
             handler.switch_graphics_mode(target)
             current = handler.get_graphics_mode()
             target_ok = (current == target)
@@ -216,11 +251,11 @@ class System76PowerCLIWorkflow(Workflow):
             current = handler.get_graphics_mode()
             phase = "target_done"
 
-        # --- Phase: verify ---
+        # --- Phase: target_done — verify, record result ---
         if phase in ("target_done", "done"):
             current = handler.get_graphics_mode()
             target_ok = (current == target)
-            source_ok = True  # source was already verified before reboot
+            source_ok = True
             verified = source_ok and target_ok
 
             entry = {"from": source, "to": target, "actual": current, "verified": verified}
@@ -249,7 +284,7 @@ class System76PowerCLIWorkflow(Workflow):
                 data={"from": source, "to": target, "actual": current, "verified": verified},
             )
 
-        # Fallback: shouldn't reach here
+        # Fallback
         return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (unexpected phase: {phase})")
 
     def transition_graphics_all(self, item_id: str = "cli.graphics_transitions") -> WorkflowResult:

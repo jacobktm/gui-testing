@@ -85,7 +85,7 @@ class BrightnessHandler:
             return None
 
     def restore_state(self, path=None) -> bool:
-        """Restore brightness from a saved JSON file."""
+        """Restore brightness from a saved JSON file using dotool keys."""
         if path is None:
             path = STATE_PATH
         path = Path(path)
@@ -93,22 +93,63 @@ class BrightnessHandler:
             return False
         try:
             state = json.loads(path.read_text())
-            b = state.get("brightness")
-            if b is not None:
-                # Use dotool to set brightness: go to min then up
-                self.brightness_down_to_min()
-                # Can't set exact value via dotool, so just restore via sysfs
-                # if writable (may need sudo on some systems)
-                try:
-                    if self.backlight:
-                        (self.backlight / "brightness").write_text(str(b))
-                        return True
-                except (PermissionError, OSError):
-                    pass
+            target = state.get("brightness")
+            if target is None:
                 return False
+            return self.set_brightness_value(target)
         except Exception:
             return False
         return False
+
+    def set_brightness_value(self, target: int, *, max_presses: int = 200) -> bool:
+        """Set brightness to an absolute value using dotool up/down keys.
+
+        Reads current brightness from sysfs after each key press.  Presses
+        brightnessup or brightnessdown until the reported value reaches (or
+        crosses) ``target``.  Returns ``True`` if the final value is within
+        one key-step of ``target``.
+        """
+        if self.backlight is None:
+            return False
+        max_b = self.maximum()
+        if max_b is None:
+            return False
+        target = max(0, min(target, max_b))
+
+        proc = subprocess.Popen(["dotool"], stdin=subprocess.PIPE, text=True)
+        try:
+            presses = 0
+            while presses < max_presses:
+                current = self.current()
+                if current is None:
+                    break
+                if current == target:
+                    break
+                if current < target:
+                    proc.stdin.write("key brightnessup\n")
+                else:
+                    proc.stdin.write("key brightnessdown\n")
+                proc.stdin.flush()
+                time.sleep(self.delay)
+                presses += 1
+        finally:
+            try:
+                proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+            proc.wait()
+
+        current = self.current()
+        return current is not None and abs(current - target) <= max(1, max_b // 20)
+
+    def set_brightness_percent(self, percent: int, *, max_presses: int = 200) -> bool:
+        """Set brightness to a percentage (0-100) using dotool keys."""
+        max_b = self.maximum()
+        if max_b is None:
+            return False
+        percent = max(0, min(100, percent))
+        target = int(max_b * percent / 100)
+        return self.set_brightness_value(target, max_presses=max_presses)
 
     def is_at_max(self) -> bool:
         c = self.current()
@@ -211,3 +252,8 @@ def brightness_up_to_max(delay: float = 0.15, **kwargs) -> bool:
 def brightness_down_to_min(delay: float = 0.15, **kwargs) -> bool:
     """Convenience wrapper: lower brightness to min and return success."""
     return BrightnessHandler(delay=delay).brightness_down_to_min(**kwargs)
+
+
+def brightness_set_percent(percent: int, delay: float = 0.15, **kwargs) -> bool:
+    """Convenience wrapper: set brightness to a percentage and return success."""
+    return BrightnessHandler(delay=delay).set_brightness_percent(percent, **kwargs)

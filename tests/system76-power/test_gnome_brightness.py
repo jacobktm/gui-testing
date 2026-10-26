@@ -59,3 +59,13 @@ class TestGNOMEBrightness:
             except Exception:
                 pass
         assert cur == before
+
+
+    @pytest.mark.reboot
+    def test_brightness_preserved_across_reboot(self, artifacts):
+        """System restart: screen brightness should be the same as before."""
+        from harness.workflows import System76PowerCLIWorkflow
+
+        wf = System76PowerCLIWorkflow(artifacts=artifacts)
+        res = wf.check_brightness_after_reboot()
+        assert res.success, res.summary

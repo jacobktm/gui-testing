@@ -164,6 +164,74 @@ class System76PowerCLIWorkflow(Workflow):
         return WorkflowResult(success=True, item_id=item_id, summary=f"transitions:{len(results)}", data={"transitions": results})
 
 
+    def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:
+        """Verify screen brightness is preserved across a system reboot.
+
+        First invocation saves the current brightness and reboots.  The resumed
+        invocation (after boot) reads the brightness again and compares it to
+        the saved value.
+        """
+        from harness.brightness import get_brightness
+
+        handler = System76Power(
+            test_id="system76_power.cli.brightness_restart",
+            item_id=item_id,
+            phase="action",
+            artifacts=self.artifacts,
+        )
+
+        progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
+        phase = progress.get("phase", "before")
+
+        if phase == "before":
+            # First invocation: save brightness and reboot.
+            before = get_brightness()
+            if before is None:
+                return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
+            self.persist_state(
+                item_id,
+                "state",
+                {"kind": "brightness_restart", "before": before, "phase": "before"},
+            )
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "setup", f"brightness_before={before}\n", step="before_reboot")
+                except Exception:
+                    pass
+            handler.setup_autologin()
+            handler.reboot()
+            handler.wait_for_boot()
+            # Process is killed by reboot; resumed run handles the comparison.
+            return WorkflowResult(success=True, item_id=item_id, summary=f"saved={before}, rebooting")
+
+        # Resumed invocation: compare brightness after reboot.
+        before = progress.get("before")
+        after = get_brightness()
+        if before is None or after is None:
+            return WorkflowResult(success=False, item_id=item_id, summary=f"before={before} after={after}")
+
+        # Allow small tolerance (backlight may shift by a step).
+        max_b = None
+        try:
+            from harness.brightness import get_max_brightness
+            max_b = get_max_brightness()
+        except Exception:
+            pass
+        tolerance = max(1, (max_b or 100) // 20)
+        ok = abs(after - before) <= tolerance
+
+        self.persist_state(
+            item_id,
+            "state",
+            {"kind": "brightness_restart", "before": before, "after": after, "phase": "done"},
+        )
+        if self.artifacts is not None and item_id:
+            try:
+                self.artifacts.save_text(item_id, "verify", f"before={before} after={after} ok={ok}\n", step="after_reboot")
+            except Exception:
+                pass
+        return WorkflowResult(success=ok, item_id=item_id, summary=f"before={before} after={after}", data={"before": before, "after": after})
+
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:
         handler = System76Power(
             test_id="system76_power.cli.graphics_power",

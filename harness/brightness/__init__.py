@@ -1,6 +1,7 @@
 from .brightness import (
     BrightnessHandler,
     brightness_down_to_min,
+    brightness_set_percent,
     brightness_up_to_max,
     get_backlight,
     get_brightness,
@@ -12,6 +13,7 @@ __all__ = [
     "BrightnessHandler",
     "STATE_PATH",
     "brightness_down_to_min",
+    "brightness_set_percent",
     "brightness_up_to_max",
     "get_backlight",
     "get_brightness",

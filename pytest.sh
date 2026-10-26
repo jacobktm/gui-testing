@@ -96,7 +96,7 @@ if $NEEDS_REBOOT_SETUP; then
     echo ""
 
     # Create sudoers rule (prompts for password)
-    SUDOERS_CONTENT="$USER ALL=(ALL) NOPASSWD: /usr/bin/python3 -m harness.reboot *, /usr/bin/systemctl restart com.system76.PowerDaemon.service"
+    SUDOERS_CONTENT="$USER ALL=(ALL) NOPASSWD: /usr/bin/python3 -m harness.reboot *, /usr/bin/systemctl restart com.system76.PowerDaemon.service, /usr/bin/systemctl reboot, /usr/sbin/reboot, /sbin/reboot"
     echo "$SUDOERS_CONTENT" | sudo tee "$SUDOERS_FILE" > /dev/null
     sudo chmod 0440 "$SUDOERS_FILE"
     CREATED_SUDOERS=true

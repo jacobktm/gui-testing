@@ -238,6 +238,11 @@ class System76Power:
         return result.get("returncode") == 0
 
     def reboot(self) -> bool:
+        # Sync filesystems before rebooting.
+        try:
+            self._run(['sync'], check=False, timeout=10)
+        except Exception:
+            pass
         # Try polkit-based reboot first (works on Pop!_OS without sudo).
         result = self._run(['systemctl', 'reboot'], check=False)
         if result.get('returncode') in (0, None):
@@ -251,9 +256,11 @@ class System76Power:
         return result.get('returncode') in (0, None)
 
     def wait_for_boot(self, timeout: float = 600.0) -> bool:
+        # Give the system time to actually start rebooting before polling.
+        print("Waiting for system to reboot...", flush=True)
+        time.sleep(10)
         deadline = time.time() + timeout
         elapsed = 0
-        print("Waiting for system to boot...", flush=True)
         while time.time() < deadline:
             try:
                 state = self._run(['systemctl', 'is-system-running'], check=False)

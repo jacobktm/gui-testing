@@ -92,11 +92,16 @@ class System76PowerCLIWorkflow(Workflow):
         if not os_id:
             # Try to detect from /etc/os-release
             try:
+                os_id_parts = {}
                 with open("/etc/os-release") as f:
                     for line in f:
-                        if line.startswith("ID="):
-                            os_id = line.strip().split("=", 1)[1].strip().strip('"').lower()
-                            break
+                        if "=" in line:
+                            key, val = line.strip().split("=", 1)
+                            os_id_parts[key] = val.strip().strip('"').lower()
+                os_id = os_id_parts.get("ID", "")
+                version = os_id_parts.get("VERSION_ID", "")
+                if version:
+                    os_id = f"{os_id}-{version}"
             except Exception:
                 pass
         if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26") or "ubuntu" in os_id:

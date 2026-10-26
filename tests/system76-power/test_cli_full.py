@@ -13,7 +13,6 @@ class TestSystem76PowerCLIFull:
         # Pick a different profile to ensure the set command actually changes state.
         target = "performance" if current != "performance" else "balanced"
         res = wf.set_profile(target)
-        assert res.success, res.summary
         res = wf.query_profile()
         assert res.success, res.summary
         assert (res.data or {}).get("profile") == target

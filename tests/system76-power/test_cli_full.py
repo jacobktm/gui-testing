@@ -23,6 +23,10 @@ class TestSystem76PowerCLIFull:
         assert res.success, res.summary
 
     def test_graphics_power_query_set(self, artifacts):
+        from handlers.system76_power import System76Power
+        _h = System76Power(artifacts=artifacts)
+        if _h.switchable() != "switchable":
+            pytest.skip("not switchable graphics")
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.get_graphics_power()
         # Accept various states

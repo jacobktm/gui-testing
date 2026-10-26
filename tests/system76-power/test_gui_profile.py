@@ -44,6 +44,10 @@ class TestSystem76PowerGUI:
         assert res.success, res.summary
 
     def test_detect_graphics_mode(self, artifacts):
+        from handlers.system76_power import System76Power
+        _h = System76Power(artifacts=artifacts)
+        if _h.switchable() != "switchable":
+            pytest.skip("not switchable graphics")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         os_id = _os_id()
         # On systems where we can't visually detect reliably, just ensure navigation works

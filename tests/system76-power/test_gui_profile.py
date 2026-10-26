@@ -44,7 +44,10 @@ class TestSystem76PowerGUI:
 
     @pytest.mark.reboot
     def test_graphics_transitions_all(self, artifacts):
-        """Pop!_OS 22.04: switch graphics modes graphically via dotool clicks."""
+        """Pop!_OS 22.04 only: switch graphics modes graphically via dotool clicks."""
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics transitions only on Pop!_OS 22.04")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics_all(os_id="pop-22.04")
         assert res.success, res.summary

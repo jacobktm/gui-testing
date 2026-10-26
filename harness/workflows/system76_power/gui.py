@@ -105,6 +105,14 @@ class System76PowerGUIWorkflow(Workflow):
         Pop!_OS 22.04 is the only release that transitions graphics modes
         graphically; other releases rely on the CLI workflow.
         """
+        if not os_id.startswith("pop-22"):
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="skipped")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary="GUI graphics not applicable on this OS", data={"skipped": True})
+
         handler = System76Power(
             test_id="system76_power.gui.graphics",
             item_id=item_id,

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -78,7 +79,14 @@ class System76Power:
     def _run(self, cmd: list[str], check: bool = False, timeout: float | None = 30.0):
         started = time.time()
         try:
-            result = subprocess.run(cmd, check=check, capture_output=True, timeout=timeout)
+            result = subprocess.run(
+                cmd,
+                check=check,
+                capture_output=True,
+                timeout=timeout,
+                start_new_session=True,
+                close_fds=True,
+            )
             ended = time.time()
             record = {
                 'command': cmd,
@@ -145,6 +153,7 @@ class System76Power:
             idx = self.perf_profiles.index(current)
             profile = self.perf_profiles[(idx + 1) % len(self.perf_profiles)]
         result = self._run(['system76-power', 'profile', profile], check=False)
+        time.sleep(1)
         if result['returncode'] == 0:
             self._log({'type': 'perf_profile_switched', 'profile': profile})
             return True
@@ -182,6 +191,7 @@ class System76Power:
             idx = self.graphics_modes.index(current)
             mode = self.graphics_modes[(idx + 1) % len(self.graphics_modes)]
         result = self._run(['system76-power', 'graphics', mode], check=False)
+        time.sleep(1)
         if result['returncode'] == 0:
             self._log({'type': 'graphics_mode_switched', 'mode': mode})
             return True

@@ -50,7 +50,6 @@ class TestSystem76PowerCLIFull:
         assert res.success, res.summary
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_integrated_to_nvidia(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -62,7 +61,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_integrated_to_hybrid(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -74,7 +72,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_integrated_to_compute(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -86,7 +83,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_nvidia_to_integrated(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -98,7 +94,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_nvidia_to_hybrid(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -110,7 +105,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_nvidia_to_compute(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -122,7 +116,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_hybrid_to_integrated(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -134,7 +127,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_hybrid_to_nvidia(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -146,7 +138,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_hybrid_to_compute(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -158,7 +149,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_compute_to_integrated(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -170,7 +160,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_compute_to_nvidia(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -182,7 +171,6 @@ class TestSystem76PowerCLIFull:
         assert data.get("verified") is True, f"CLI verification failed: {data}"
 
     @pytest.mark.reboot
-    @pytest.mark.graphics_individual
     def test_graphics_transition_compute_to_hybrid(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
@@ -202,16 +190,3 @@ class TestSystem76PowerCLIFull:
         if (res.data or {}).get("skipped"):
             return  # not 22.04 or no GUI verification data
         assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_graphics_transitions_all(self, artifacts):
-        """Orchestrator: run all transitions in order determined by starting mode."""
-        from harness.workflows import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        order = wf.get_transition_order()
-        print(f"Transition order: {order}")
-        res = wf.transition_graphics_all()
-        assert res.success, res.summary
-        for entry in (res.data or {}).get("transitions", []):
-            assert entry.get("verified") is True, f"CLI verification failed: {entry}"

@@ -157,10 +157,12 @@ class System76PowerCLIWorkflow(Workflow):
                 },
             )
 
+        all_ok = True
         for source, target in transitions:
             if (source, target) in done:
                 continue
             # Move to the source mode before exercising source -> target.
+            source_ok = True
             if current != source:
                 handler.switch_graphics_mode(source)
                 current = source
@@ -169,6 +171,11 @@ class System76PowerCLIWorkflow(Workflow):
                 handler.reboot()
                 handler.wait_for_boot()
                 current = handler.get_graphics_mode()
+                # Verify we actually reached the source mode.
+                source_ok = (current == source)
+                if not source_ok:
+                    all_ok = False
+            # Switch to target mode.
             handler.switch_graphics_mode(target)
             current = target
             save_progress()
@@ -176,17 +183,22 @@ class System76PowerCLIWorkflow(Workflow):
             handler.reboot()
             handler.wait_for_boot()
             current = handler.get_graphics_mode()
-            results.append({"from": source, "to": target, "actual": current})
+            # Verify the transition actually took effect.
+            target_ok = (current == target)
+            if not target_ok:
+                all_ok = False
+            verified = source_ok and target_ok
+            results.append({"from": source, "to": target, "actual": current, "verified": verified})
             done.add((source, target))
             save_progress()
             if self.artifacts is not None and item_id:
                 try:
-                    self.artifacts.save_text(item_id, "action", f"transition -> {source} to {target}\n", step="transition")
+                    self.artifacts.save_text(item_id, "action", f"transition -> {source} to {target} (verified={verified})\n", step="transition")
                 except Exception:
                     pass
 
         final_report = "\n".join(
-            f"{entry['from']}->{entry['to']} (actual: {entry['actual']})"
+            f"{entry['from']}->{entry['to']} (actual: {entry['actual']}, verified={entry.get('verified', '?')})"
             for entry in results
         )
         save_progress()
@@ -195,7 +207,9 @@ class System76PowerCLIWorkflow(Workflow):
                 self.artifacts.save_text(item_id, "verify", final_report + "\n", step="transition_report")
             except Exception:
                 pass
-        return WorkflowResult(success=True, item_id=item_id, summary=f"transitions:{len(results)}", data={"transitions": results})
+        failed = [e for e in results if not e.get("verified", True)]
+        summary = f"transitions:{len(results)} verified:{len(results)-len(failed)} failed:{len(failed)}"
+        return WorkflowResult(success=all_ok and len(failed) == 0, item_id=item_id, summary=summary, data={"transitions": results})
 
 
     def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:

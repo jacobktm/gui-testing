@@ -156,9 +156,11 @@ class System76PowerGUIWorkflow(Workflow):
                 },
             )
 
+        all_ok = True
         for source, target in transitions:
             if (source, target) in done:
                 continue
+            source_ok = True
             if current != source:
                 self.set_graphics_mode_gui(source, os_id=os_id, item_id=f"{item_id}.nav")
                 current = source
@@ -167,6 +169,9 @@ class System76PowerGUIWorkflow(Workflow):
                 handler.reboot()
                 handler.wait_for_boot()
                 current = handler.get_graphics_mode()
+                source_ok = (current == source)
+                if not source_ok:
+                    all_ok = False
             self.set_graphics_mode_gui(target, os_id=os_id, item_id=item_id)
             current = target
             save_progress()
@@ -174,12 +179,16 @@ class System76PowerGUIWorkflow(Workflow):
             handler.reboot()
             handler.wait_for_boot()
             current = handler.get_graphics_mode()
-            results.append({"from": source, "to": target, "actual": current})
+            target_ok = (current == target)
+            if not target_ok:
+                all_ok = False
+            verified = source_ok and target_ok
+            results.append({"from": source, "to": target, "actual": current, "verified": verified})
             done.add((source, target))
             save_progress()
 
         final_report = "\n".join(
-            f"{entry['from']}->{entry['to']} (actual: {entry['actual']})"
+            f"{entry['from']}->{entry['to']} (actual: {entry['actual']}, verified={entry.get('verified', '?')})"
             for entry in results
         )
         save_progress()
@@ -188,7 +197,9 @@ class System76PowerGUIWorkflow(Workflow):
                 self.artifacts.save_text(item_id, "verify", final_report + "\n", step="transition_report")
             except Exception:
                 pass
-        return WorkflowResult(success=True, item_id=item_id, summary=f"transitions:{len(results)}", data={"transitions": results})
+        failed = [e for e in results if not e.get("verified", True)]
+        summary = f"transitions:{len(results)} verified:{len(results)-len(failed)} failed:{len(failed)}"
+        return WorkflowResult(success=all_ok and len(failed) == 0, item_id=item_id, summary=summary, data={"transitions": results})
 
 
     def detect_power_profile(

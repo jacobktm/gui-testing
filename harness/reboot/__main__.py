@@ -71,7 +71,7 @@ def _cmd_cleanup(username: str | None) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m harness.reboot")
-    parser.add_argument("action", choices=("status", "enable", "restore", "cleanup"))
+    parser.add_argument("action", choices=("status", "enable", "restore", "cleanup", "cleanup-all"))
     parser.add_argument("--user", help="GUI user (defaults to the detected session user)")
     parser.add_argument("--run-dir", help="artifact run directory for the resume unit")
     parser.add_argument("--workdir", help="working directory for the resumed pytest run")
@@ -96,6 +96,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.action == "cleanup":
         return _cmd_cleanup(session.username)
+
+    if args.action == "cleanup-all":
+        # Remove sudoers, resume unit, and restore autologin.
+        _cmd_cleanup(session.username)
+        from .autostart import remove_resume_unit
+        remove_resume_unit(username=session.username)
+        restored = AutologinManager(session).restore()
+        print(f"autologin restored: {restored}")
+        return 0 if restored else 1
 
     restored = AutologinManager(session).restore()
     removed = remove_resume_unit(username=session.username)

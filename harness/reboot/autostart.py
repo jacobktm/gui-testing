@@ -268,15 +268,66 @@ WantedBy=graphical-session.target
 
 
 def remove_resume_unit(*, username: str | None = None) -> bool:
-    """Disable and delete the resume unit (the run directory keeps its script)."""
+    """Disable, stop, and delete the resume unit (best-effort, multiple paths)."""
     target_user = username or pwd.getpwuid(os.getuid()).pw_name
-    unit_path = unit_path_for(target_user)
-    _systemctl_user(["disable", UNIT_NAME], target_user)
+    # Collect all possible unit file locations.
+    paths_to_try = [unit_path_for(target_user)]
+    # Also try current user's home.
     try:
-        unit_path.unlink()
-    except FileNotFoundError:
-        return True
-    except OSError:
-        return False
-    _systemctl_user(["daemon-reload"], target_user)
-    return True
+        paths_to_try.append(unit_path_for(pwd.getpwuid(os.getuid()).pw_name))
+    except KeyError:
+        pass
+    # Deduplicate.
+    seen = set()
+    unique_paths = []
+    for p in paths_to_try:
+        if str(p) not in seen:
+            seen.add(str(p))
+            unique_paths.append(p)
+
+    env = os.environ.copy()
+    try:
+        entry = pwd.getpwnam(target_user)
+        env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{entry.pw_uid}")
+        env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{entry.pw_uid}/bus")
+    except KeyError:
+        pass
+
+    # Stop and disable.
+    for args in (["stop", UNIT_NAME], ["disable", UNIT_NAME]):
+        try:
+            subprocess.run(
+                ["systemctl", "--user", *args],
+                capture_output=True, text=True, timeout=20, env=env,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    # Remove unit files.
+    removed_any = False
+    for up in unique_paths:
+        try:
+            up.unlink()
+            removed_any = True
+        except FileNotFoundError:
+            removed_any = True
+        except OSError:
+            try:
+                subprocess.run(
+                    ["sudo", "-n", "rm", "-f", str(up)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                removed_any = True
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+    # Daemon reload.
+    try:
+        subprocess.run(
+            ["systemctl", "--user", "daemon-reload"],
+            capture_output=True, text=True, timeout=20, env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    return removed_any

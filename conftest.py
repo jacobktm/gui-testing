@@ -216,11 +216,22 @@ def pytest_sessionfinish(session, exitstatus):
     config = session.config
     _finalize_run(config)
     setup = getattr(config, "_gui_reboot_setup", None)
-    if setup is not None and os.environ.get("GUI_TESTING_KEEP_REBOOT_SETUP") != "1":
-        # A reboot kills this process, so this only runs once the run really
-        # finishes (or is interrupted); restore the machine either way.
-        finish_reboot(username=setup.username)
-        config._gui_reboot_finished = True
+    if os.environ.get("GUI_TESTING_KEEP_REBOOT_SETUP") == "1":
+        return
+    # Determine the user to clean up for.  On a resumed run, setup is None
+    # (we skipped prepare_reboot), but cleanup is still needed.
+    username = None
+    if setup is not None:
+        username = setup.username
+    elif getattr(config, "_gui_resumed", False) or config._gui_resume_requested:
+        from harness.reboot import detect_gui_user
+        username = detect_gui_user()
+    if username is None:
+        return
+    # A reboot kills this process, so this only runs once the run really
+    # finishes (or is interrupted); restore the machine either way.
+    finish_reboot(username=username)
+    config._gui_reboot_finished = True
     # Clean up passwordless sudoers rule if pytest.sh created one.
     if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
         try:

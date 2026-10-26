@@ -130,4 +130,14 @@ def finish_reboot(*, username: str | None = None) -> bool:
     target = username or detect_gui_user()
     unit_removed = remove_resume_unit(username=target)
     restored = restore_autologin()
-    return bool(unit_removed and restored)
+    # Also try to clean up sudoers (best-effort).
+    try:
+        from .autostart import _systemctl_user
+        import subprocess
+        subprocess.run(
+            ["sudo", "-n", "rm", "-f", "/etc/sudoers.d/gui-testing"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except Exception:
+        pass
+    return bool(unit_removed or restored)

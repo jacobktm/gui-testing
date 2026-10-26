@@ -152,9 +152,9 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(already_done)
 
     # Avoid running destructive/state-changing tests by default on a dev box.
-    if os.environ.get("RUN_DESTRUCTIVE_TESTS") != "1":
+    if os.environ.get("RUN_DESTRUCTIVE_TESTS", "1") != "1":
         skip_destructive = pytest.mark.skip(
-            reason="destructive/state-changing test skipped; set RUN_DESTRUCTIVE_TESTS=1 to run"
+            reason="destructive/state-changing test skipped; set RUN_DESTRUCTIVE_TESTS=0 to skip"
         )
         for item in items:
             if item.get_closest_marker("destructive") or item.get_closest_marker("reboot"):

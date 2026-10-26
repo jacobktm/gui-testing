@@ -19,6 +19,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Run destructive/reboot tests by default (this harness is for system testing)
+export RUN_DESTRUCTIVE_TESTS="${RUN_DESTRUCTIVE_TESTS:-1}"
+
 VENV_DIR="$SCRIPT_DIR/.venv"
 if [[ ! -f "$VENV_DIR/bin/activate" ]]; then
     echo "Error: virtual environment not found at $VENV_DIR" >&2

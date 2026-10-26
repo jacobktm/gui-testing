@@ -246,16 +246,35 @@ class System76PowerGUIWorkflow(Workflow):
 
     def detect_graphics_mode(
         self,
-        item_id: str = "gui.graphics_mode_pop22",
+        os_id: str = "pop-22.04",
+        item_id: str = "gui.graphics_mode_detect",
     ) -> WorkflowResult:
-        """Detect graphics mode on Pop!_OS 22.04 only."""
+        """Detect graphics mode via UI for the given OS."""
         expected = {"integrated", "hybrid", "compute", "nvidia"}
-        prompt = (
-            "Look at this screenshot of Pop!_OS 22.04 graphics settings. "
-            "What graphics mode is currently selected/active? "
-            "Give me the response in just a single word: either "
-            "'integrated', 'hybrid', 'compute', or 'nvidia'."
-        )
+        if os_id == "pop-22.04":
+            prompt = (
+                "Look at this screenshot of Pop!_OS 22.04 graphics settings. "
+                "What graphics mode is currently selected/active? "
+                "Give me the response in just a single word: either "
+                "'integrated', 'hybrid', 'compute', or 'nvidia'."
+            )
+        elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+            expected = {"integrated", "hybrid", "compute", "nvidia", "performance"}
+            prompt = (
+                "Look at this screenshot of Ubuntu power settings. "
+                "What graphics mode is currently selected/active? "
+                "Give me the response in just a single word: either "
+                "'integrated', 'hybrid', 'compute', or 'nvidia'."
+            )
+        else:
+            # Pop!_OS 24.04 / COSMIC
+            expected = {"integrated", "hybrid", "compute", "nvidia"}
+            prompt = (
+                "Look at this screenshot of the power settings. "
+                "What graphics mode is currently selected/active? "
+                "Give me the response in just a single word: either "
+                "'integrated', 'hybrid', 'compute', or 'nvidia'."
+            )
 
         try:
             value, result = self.driver.capture_and_detect(

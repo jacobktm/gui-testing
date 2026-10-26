@@ -244,11 +244,11 @@ class System76PowerCLIWorkflow(Workflow):
         phase = progress.get("phase", "start") if in_progress else "start"
 
         current = handler.get_graphics_mode()
-        print(f"  transition {source}->{target}: current mode = {current!r}", flush=True)
+        print(f"  transition {source}->{target}: current (source) mode = {current!r}", flush=True)
 
         # --- Phase: start — record source, switch to target, save, reboot ---
         if phase == "start":
-            # Log the current mode (source) for reporting.
+            # Record the current mode as source (verified before switch).
             actual_source = current if current else source
             print(f"  switching to {target}...", flush=True)
             # Switch to target.
@@ -268,10 +268,6 @@ class System76PowerCLIWorkflow(Workflow):
                     "completed": len(results),
                 })
                 return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (switch failed: {result.get('stderr', '')})", data=entry)
-
-            # Verify mode was set before reboot.
-            pre_reboot_mode = handler.get_graphics_mode()
-            print(f"  before reboot: mode = {pre_reboot_mode!r} (target={target!r})", flush=True)
 
             # Save state BEFORE reboot.
             self.persist_state(item_id, "state", {

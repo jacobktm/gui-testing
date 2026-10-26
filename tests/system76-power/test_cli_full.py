@@ -41,6 +41,15 @@ class TestSystem76PowerCLIFull:
             pass
 
     @pytest.mark.reboot
+    def test_graphics_transition_to_integrated(self, artifacts):
+        """Transition from current mode to integrated (ensures starting point)."""
+        from harness.workflows import System76PowerCLIWorkflow
+
+        wf = System76PowerCLIWorkflow(artifacts=artifacts)
+        res = wf.transition_to_integrated(item_id="cli.graphics_transition.to_integrated")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
     def test_graphics_transition_integrated_to_nvidia(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 

@@ -70,6 +70,93 @@ class System76PowerCLIWorkflow(Workflow):
                 pass
         return WorkflowResult(success=True, item_id=item_id, summary=f"{mode}->{newm}", data={"graphics": newm})
 
+    def transition_to_integrated(self, item_id: str = "cli.graphics_transition.to_integrated") -> WorkflowResult:
+        """Transition from the current mode to integrated (if not already there).
+
+        This ensures the system starts in integrated mode before running
+        the ordered transition sequence.  If already in integrated, this
+        is a no-op that returns success.
+        """
+        handler = System76Power(
+            test_id="system76_power.cli.graphics",
+            item_id=item_id,
+            phase="action",
+            artifacts=self.artifacts,
+        )
+        switchable = handler.switchable()
+        if switchable != "switchable":
+            return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
+
+        import os
+        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
+        if not os_id:
+            try:
+                os_id_parts = {}
+                with open("/etc/os-release") as f:
+                    for line in f:
+                        if "=" in line:
+                            key, val = line.strip().split("=", 1)
+                            os_id_parts[key] = val.strip().strip('"').lower()
+                os_id = os_id_parts.get("ID", "")
+                version = os_id_parts.get("VERSION_ID", "")
+                if version:
+                    os_id = f"{os_id}-{version}"
+            except Exception:
+                pass
+        if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26") or "ubuntu" in os_id:
+            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
+
+        current = handler.get_graphics_mode()
+        print(f"transition_to_integrated: current mode = {current!r}", flush=True)
+
+        if current == "integrated":
+            print("  Already in integrated mode, no transition needed.", flush=True)
+            return WorkflowResult(success=True, item_id=item_id, summary="already integrated", data={"from": current, "to": "integrated", "actual": current, "verified": True})
+
+        # Switch to integrated.
+        result = handler._run(['system76-power', 'graphics', 'integrated'], check=False)
+        logged = (result.get('stdout') or '').strip()
+        print(f"  system76-power graphics integrated: rc={result.get('returncode')} output={logged!r}", flush=True)
+        if result.get('returncode') not in (0, None):
+            return WorkflowResult(success=False, item_id=item_id, summary=f"switch to integrated failed: {result.get('stderr', '')}", data={"from": current, "to": "integrated", "actual": current, "verified": False})
+
+        self.persist_state(item_id, "state", {
+            "kind": "graphics_transition",
+            "phase": "rebooting",
+            "source": current,
+            "target": "integrated",
+            "current": "integrated",
+        })
+        handler.setup_autologin()
+        handler.reboot()
+        handler.wait_for_boot()
+        current = handler.get_graphics_mode()
+        verified = (current == "integrated")
+        print(f"  After reboot: mode = {current!r}, verified = {verified}", flush=True)
+
+        self.persist_state(item_id, "state", {
+            "kind": "graphics_transition",
+            "phase": "done",
+            "source": current,
+            "target": "integrated",
+            "current": current,
+            "results": [{"from": source if 'source' in dir() else current, "to": "integrated", "actual": current, "verified": verified}],
+            "completed": 1,
+        })
+
+        if self.artifacts is not None and item_id:
+            try:
+                self.artifacts.save_text(item_id, "action", f"transition -> {current} to integrated (verified={verified})\n", step="transition")
+            except Exception:
+                pass
+
+        return WorkflowResult(
+            success=verified,
+            item_id=item_id,
+            summary=f"to_integrated (actual: {current}, verified={verified})",
+            data={"from": current, "to": "integrated", "actual": current, "verified": verified},
+        )
+
     def get_transition_order(self, item_id: str = "cli.graphics_transitions") -> list[tuple[str, str]]:
         """Determine an Eulerian circuit through all (source, target) pairs.
 
@@ -99,8 +186,19 @@ class System76PowerCLIWorkflow(Workflow):
 
         # Build adjacency list: all directed edges source -> target.
         adj = {m: [t for t in modes if t != m] for m in modes}
-        # Hierholzer's algorithm for Eulerian circuit.
-        stack = [current]
+
+        # If not starting in integrated, force the first edge to be
+        # current -> integrated so we transition to integrated first.
+        # Remove that edge from the adjacency list.
+        forced_first = None
+        if current != "integrated" and "integrated" in modes:
+            forced_first = (current, "integrated")
+            adj[current].remove("integrated")
+
+        # Hierholzer's algorithm for Eulerian circuit starting from
+        # 'integrated' (or current if already integrated).
+        start_node = "integrated" if "integrated" in modes else current
+        stack = [start_node]
         route = []
         while stack:
             v = stack[-1]
@@ -112,14 +210,20 @@ class System76PowerCLIWorkflow(Workflow):
         route.reverse()
         # route is a list of nodes; convert to edges.
         transitions = [(route[i], route[i + 1]) for i in range(len(route) - 1)]
-        # Deduplicate while preserving order (Hierholzer may repeat nodes).
+        # Deduplicate while preserving order.
         seen = set()
         unique = []
         for edge in transitions:
             if edge not in seen:
                 seen.add(edge)
                 unique.append(edge)
-        print(f"Eulerian circuit: {len(unique)} transitions", flush=True)
+
+        # Prepend the forced first edge if applicable.
+        if forced_first is not None:
+            unique = [forced_first] + unique
+
+        print(f"Starting mode: {current!r}, first transition to integrated: {forced_first is not None}", flush=True)
+        print(f"Transition order ({len(unique)} pairs):", flush=True)
         for src, tgt in unique:
             print(f"  {src} -> {tgt}", flush=True)
         return unique
@@ -365,6 +469,11 @@ class System76PowerCLIWorkflow(Workflow):
                 except Exception:
                     pass
             return WorkflowResult(success=True, item_id=item_id, summary="no graphics modes", data={"skipped": True})
+
+        # First, ensure we start in integrated mode.
+        print("Ensuring system starts in integrated mode...", flush=True)
+        to_int = self.transition_to_integrated(item_id=f"{item_id}.to_integrated")
+        print(f"  transition_to_integrated: {to_int.summary}", flush=True)
 
         order = self.get_transition_order(item_id=item_id)
         print(f"Transition order ({len(order)} pairs):", flush=True)

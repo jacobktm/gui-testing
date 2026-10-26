@@ -135,8 +135,8 @@ source "$VENV_DIR/bin/activate"
 
 if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
     echo "Running all tests (verbose)..."
-    exec pytest -vv
+    exec pytest -vv -s
 else
     echo "Running: pytest -vv ${PYTEST_ARGS[*]}"
-    exec pytest -vv "${PYTEST_ARGS[@]}"
+    exec pytest -vv -s "${PYTEST_ARGS[@]}"
 fi

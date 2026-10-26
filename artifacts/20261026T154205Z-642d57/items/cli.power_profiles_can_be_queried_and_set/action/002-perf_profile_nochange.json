@@ -1,9 +1,0 @@
-{
-  "handler": "system76_power",
-  "timestamp": "2026-10-26T15:42:05.369553Z",
-  "test_id": "system76_power.cli.profile",
-  "item_id": "cli.power_profiles_can_be_queried_and_set",
-  "phase": "action",
-  "type": "perf_profile_nochange",
-  "profile": "balanced"
-}

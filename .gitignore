@@ -35,3 +35,6 @@ credentials*
 .idea/
 *.swp
 .DS_Store
+
+# Test artifacts
+artifacts/

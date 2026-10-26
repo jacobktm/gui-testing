@@ -1,7 +1,0 @@
-{
-  "completed": [
-    "tests/system76-power/test_cli_full.py::TestSystem76PowerCLIFull::test_graphics_power_query_set",
-    "tests/system76-power/test_cli_full.py::TestSystem76PowerCLIFull::test_laptop_switchable_graphics_can_be_queried",
-    "tests/system76-power/test_cli_full.py::TestSystem76PowerCLIFull::test_power_profiles_can_be_queried_and_set"
-  ]
-}

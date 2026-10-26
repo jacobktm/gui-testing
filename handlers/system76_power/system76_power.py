@@ -286,6 +286,11 @@ class System76Power:
             self._run(['sync'], check=False, timeout=10)
         except Exception:
             pass
+        # Record boot time before reboot for verification.
+        try:
+            self._boot_time_before = float(open('/proc/uptime').read().split()[0])
+        except Exception:
+            self._boot_time_before = None
         # Try polkit-based reboot first (works on Pop!_OS without sudo).
         result = self._run(['systemctl', 'reboot'], check=False)
         if result.get('returncode') in (0, None):
@@ -301,7 +306,7 @@ class System76Power:
     def wait_for_boot(self, timeout: float = 600.0) -> bool:
         # Give the system time to actually start rebooting before polling.
         print("Waiting for system to reboot...", flush=True)
-        time.sleep(10)
+        time.sleep(15)
         deadline = time.time() + timeout
         elapsed = 0
         while time.time() < deadline:
@@ -309,6 +314,13 @@ class System76Power:
                 state = self._run(['systemctl', 'is-system-running'], check=False)
                 status = (state.get('stdout') or '').strip() if state else ''
                 if state.get('returncode') == 0 and status:
+                    # Verify the system actually rebooted.
+                    try:
+                        boot_time_after = float(open('/proc/uptime').read().split()[0])
+                        if self._boot_time_before is not None and boot_time_after >= self._boot_time_before:
+                            print(f"  Warning: system may not have rebooted (uptime {boot_time_after:.0f}s >= {self._boot_time_before:.0f}s)", flush=True)
+                    except Exception:
+                        pass
                     print(f"  System is {status} (after {elapsed}s)", flush=True)
                     return True
                 if status:

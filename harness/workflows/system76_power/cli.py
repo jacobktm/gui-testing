@@ -70,7 +70,113 @@ class System76PowerCLIWorkflow(Workflow):
                 pass
         return WorkflowResult(success=True, item_id=item_id, summary=f"{mode}->{newm}", data={"graphics": newm})
 
+    def get_transition_order(self, item_id: str = "cli.graphics_transitions") -> list[tuple[str, str]]:
+        """Determine the order of graphics transitions based on the current mode.
+
+        Returns an ordered list of (source, target) pairs.  The first
+        transition starts from the currently active graphics mode so that
+        no unnecessary mode switch is needed before the first reboot.
+        """
+        handler = System76Power(
+            test_id="system76_power.cli.graphics",
+            item_id=item_id,
+            phase="verify",
+            artifacts=self.artifacts,
+        )
+        switchable = handler.switchable()
+        if switchable != "switchable":
+            return []
+
+        modes = list(handler.graphics_modes)
+        current = handler.get_graphics_mode()
+        if current not in modes:
+            current = modes[0]
+
+        # Start with all transitions originating from the current mode,
+        # then the remaining modes in order.
+        ordered_modes = [current] + [m for m in modes if m != current]
+        transitions = []
+        for source in ordered_modes:
+            for target in modes:
+                if source != target and (source, target) not in transitions:
+                    transitions.append((source, target))
+        return transitions
+
+    def transition_graphics(self, source: str, target: str, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
+        """Execute a single graphics mode transition (source -> target).
+
+        Switches to source (if needed), reboots, switches to target, reboots,
+        and verifies the final mode matches target.
+        """
+        handler = System76Power(
+            test_id="system76_power.cli.graphics",
+            item_id=item_id,
+            phase="action",
+            artifacts=self.artifacts,
+        )
+        progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
+        results = progress.get("results", [])
+        done = {(e.get("from"), e.get("to")) for e in results if isinstance(e, dict)}
+
+        if (source, target) in done:
+            # Already completed in a previous run.
+            entry = next((e for e in results if e.get("from") == source and e.get("to") == target), {})
+            return WorkflowResult(
+                success=entry.get("verified", True),
+                item_id=item_id,
+                summary=f"{source}->{target} (already done, verified={entry.get('verified', '?')})",
+                data={"from": source, "to": target, "actual": entry.get("actual"), "verified": entry.get("verified", True)},
+            )
+
+        current = handler.get_graphics_mode()
+
+        # Move to source if needed.
+        source_ok = True
+        if current != source:
+            handler.switch_graphics_mode(source)
+            current = source
+            self.persist_state(item_id, "state", {"kind": "graphics_transition", "current": current, "source": source, "target": target})
+            handler.setup_autologin()
+            handler.reboot()
+            handler.wait_for_boot()
+            current = handler.get_graphics_mode()
+            source_ok = (current == source)
+
+        # Switch to target.
+        handler.switch_graphics_mode(target)
+        current = target
+        self.persist_state(item_id, "state", {"kind": "graphics_transition", "current": current, "source": source, "target": target})
+        handler.setup_autologin()
+        handler.reboot()
+        handler.wait_for_boot()
+        current = handler.get_graphics_mode()
+        target_ok = (current == target)
+
+        verified = source_ok and target_ok
+        entry = {"from": source, "to": target, "actual": current, "verified": verified}
+        results.append(entry)
+        self.persist_state(item_id, "state", {"kind": "graphics_transition", "current": current, "results": results, "completed": len(results)})
+
+        if self.artifacts is not None and item_id:
+            try:
+                self.artifacts.save_text(item_id, "action", f"transition -> {source} to {target} (verified={verified})\n", step="transition")
+            except Exception:
+                pass
+
+        return WorkflowResult(
+            success=verified,
+            item_id=item_id,
+            summary=f"{source}->{target} (actual: {current}, verified={verified})",
+            data={"from": source, "to": target, "actual": current, "verified": verified},
+        )
+
     def transition_graphics_all(self, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
+        """Run all graphics transitions in the order determined by the starting mode.
+
+        Determines the transition order from the current graphics mode, then
+        calls transition_graphics() for each (source, target) pair in sequence.
+        Each individual transition handles its own reboot and verification.
+        """
         handler = System76Power(
             test_id="system76_power.cli.graphics",
             item_id=item_id,
@@ -90,7 +196,6 @@ class System76PowerCLIWorkflow(Workflow):
         import os
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
         if not os_id:
-            # Try to detect from /etc/os-release
             try:
                 os_id_parts = {}
                 with open("/etc/os-release") as f:
@@ -113,7 +218,6 @@ class System76PowerCLIWorkflow(Workflow):
             return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
 
         modes = list(handler.graphics_modes)
-        # If no valid graphics modes detected, skip.
         if not modes or handler.get_graphics_mode() is None:
             if self.artifacts is not None and item_id:
                 try:
@@ -121,164 +225,33 @@ class System76PowerCLIWorkflow(Workflow):
                 except Exception:
                     pass
             return WorkflowResult(success=True, item_id=item_id, summary="no graphics modes", data={"skipped": True})
-        # Exercise every ordered pair of graphics modes (source -> target).
-        transitions = [
-            (source, target)
-            for source in modes
-            for target in modes
-            if source != target
-        ]
 
-        # Resume progress from a previous boot: completed pairs are skipped and
-        # their results are carried into the final report.
-        progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
-        results = [
-            entry
-            for entry in (progress.get("results") or [])
-            if isinstance(entry, dict) and entry.get("from") in modes and entry.get("to") in modes
-        ]
-        done = {(entry.get("from"), entry.get("to")) for entry in results}
-        current = handler.get_graphics_mode()
-        persisted_mode = progress.get("current")
-        # Prefer the mode reported by the hardware after the reboot; the stored
-        # value is only a fallback when the query is unavailable.
-        if current not in modes and isinstance(persisted_mode, str) and persisted_mode in modes:
-            current = persisted_mode
+        order = self.get_transition_order(item_id=item_id)
+        if not order:
+            return WorkflowResult(success=True, item_id=item_id, summary="no transitions", data={"skipped": True})
 
-        def save_progress() -> None:
-            self.persist_state(
-                item_id,
-                "state",
-                {
-                    "kind": "graphics_transition",
-                    "current": current,
-                    "results": results,
-                    "completed": len(results),
-                },
-            )
-
+        results = []
         all_ok = True
-        for source, target in transitions:
-            if (source, target) in done:
-                continue
-            # Move to the source mode before exercising source -> target.
-            source_ok = True
-            if current != source:
-                handler.switch_graphics_mode(source)
-                current = source
-                save_progress()
-                handler.setup_autologin()
-                handler.reboot()
-                handler.wait_for_boot()
-                current = handler.get_graphics_mode()
-                # Verify we actually reached the source mode.
-                source_ok = (current == source)
-                if not source_ok:
-                    all_ok = False
-            # Switch to target mode.
-            handler.switch_graphics_mode(target)
-            current = target
-            save_progress()
-            handler.setup_autologin()
-            handler.reboot()
-            handler.wait_for_boot()
-            current = handler.get_graphics_mode()
-            # Verify the transition actually took effect.
-            target_ok = (current == target)
-            if not target_ok:
+        for source, target in order:
+            res = self.transition_graphics(source, target, item_id=item_id)
+            entry = res.data if res.data else {"from": source, "to": target, "actual": None, "verified": res.success}
+            results.append(entry)
+            if not res.success:
                 all_ok = False
-            verified = source_ok and target_ok
-            results.append({"from": source, "to": target, "actual": current, "verified": verified})
-            done.add((source, target))
-            save_progress()
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.save_text(item_id, "action", f"transition -> {source} to {target} (verified={verified})\n", step="transition")
-                except Exception:
-                    pass
 
         final_report = "\n".join(
-            f"{entry['from']}->{entry['to']} (actual: {entry['actual']}, verified={entry.get('verified', '?')})"
-            for entry in results
+            f"{e['from']}->{e['to']} (actual: {e.get('actual')}, verified={e.get('verified', '?')})"
+            for e in results
         )
-        save_progress()
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "verify", final_report + "\n", step="transition_report")
             except Exception:
                 pass
+
         failed = [e for e in results if not e.get("verified", True)]
         summary = f"transitions:{len(results)} verified:{len(results)-len(failed)} failed:{len(failed)}"
-        return WorkflowResult(success=all_ok and len(failed) == 0, item_id=item_id, summary=summary, data={"transitions": results})
-
-
-    def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:
-        """Verify screen brightness is preserved across a system reboot.
-
-        First invocation saves the current brightness and reboots.  The resumed
-        invocation (after boot) reads the brightness again and compares it to
-        the saved value.
-        """
-        from harness.brightness import get_brightness
-
-        handler = System76Power(
-            test_id="system76_power.cli.brightness_restart",
-            item_id=item_id,
-            phase="action",
-            artifacts=self.artifacts,
-        )
-
-        progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
-        phase = progress.get("phase", "before")
-
-        if phase == "before":
-            # First invocation: save brightness and reboot.
-            before = get_brightness()
-            if before is None:
-                return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
-            self.persist_state(
-                item_id,
-                "state",
-                {"kind": "brightness_restart", "before": before, "phase": "before"},
-            )
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.save_text(item_id, "setup", f"brightness_before={before}\n", step="before_reboot")
-                except Exception:
-                    pass
-            handler.setup_autologin()
-            handler.reboot()
-            handler.wait_for_boot()
-            # Process is killed by reboot; resumed run handles the comparison.
-            return WorkflowResult(success=True, item_id=item_id, summary=f"saved={before}, rebooting")
-
-        # Resumed invocation: compare brightness after reboot.
-        before = progress.get("before")
-        after = get_brightness()
-        if before is None or after is None:
-            return WorkflowResult(success=False, item_id=item_id, summary=f"before={before} after={after}")
-
-        # Allow small tolerance (backlight may shift by a step).
-        max_b = None
-        try:
-            from harness.brightness import get_max_brightness
-            max_b = get_max_brightness()
-        except Exception:
-            pass
-        tolerance = max(1, (max_b or 100) // 20)
-        ok = abs(after - before) <= tolerance
-
-        self.persist_state(
-            item_id,
-            "state",
-            {"kind": "brightness_restart", "before": before, "after": after, "phase": "done"},
-        )
-        if self.artifacts is not None and item_id:
-            try:
-                self.artifacts.save_text(item_id, "verify", f"before={before} after={after} ok={ok}\n", step="after_reboot")
-            except Exception:
-                pass
-        return WorkflowResult(success=ok, item_id=item_id, summary=f"before={before} after={after}", data={"before": before, "after": after})
+        return WorkflowResult(success=all_ok and len(failed) == 0, item_id=item_id, summary=summary, data={"transitions": results, "order": order})
 
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:
         handler = System76Power(

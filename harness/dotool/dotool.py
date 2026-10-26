@@ -3,17 +3,19 @@ import time
 import math
 
 __all__ = [
-    "drag_and_drop",
-    "left_click",
-    "right_click",
-    "middle_click",
+    "brightness_down",
+    "brightness_up",
     "click",
-    "mouse_down",
-    "mouse_up",
-    "mouseto",
+    "drag_and_drop",
     "key",
     "key_down",
     "key_up",
+    "left_click",
+    "middle_click",
+    "mouse_down",
+    "mouse_up",
+    "mouseto",
+    "right_click",
     "send_keys",
     "type_text",
 ]
@@ -184,6 +186,34 @@ def mouse_up(button: str = "left", dtproc=None, delay: float = 0.05):
     proc, own = _ensure_process(dtproc)
     try:
         proc.stdin.write(f"buttonup {button}\n")
+        proc.stdin.flush()
+        time.sleep(delay)
+    finally:
+        if own:
+            proc.stdin.close()
+            proc.wait()
+    return proc
+
+
+def brightness_up(dtproc=None, delay: float = 0.05):
+    """Send a single brightnessup key press via dotool."""
+    proc, own = _ensure_process(dtproc)
+    try:
+        proc.stdin.write("key brightnessup\n")
+        proc.stdin.flush()
+        time.sleep(delay)
+    finally:
+        if own:
+            proc.stdin.close()
+            proc.wait()
+    return proc
+
+
+def brightness_down(dtproc=None, delay: float = 0.05):
+    """Send a single brightnessdown key press via dotool."""
+    proc, own = _ensure_process(dtproc)
+    try:
+        proc.stdin.write("key brightnessdown\n")
         proc.stdin.flush()
         time.sleep(delay)
     finally:

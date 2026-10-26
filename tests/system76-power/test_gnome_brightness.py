@@ -2,21 +2,21 @@ import os
 
 import pytest
 
-from handlers.brightness import Brightness
+from harness.brightness import BrightnessHandler
 from handlers.system76_power import System76Power
 
 
 @pytest.mark.gnome
 class TestGNOMEBrightness:
     def test_brightness_balanced_max(self, artifacts):
-        b = Brightness()
+        b = BrightnessHandler()
         s = System76Power(artifacts=artifacts)
-        max_b = b.get_max_brightness()
+        max_b = b.maximum()
         if max_b is None:
             pytest.skip("no backlight")
-        b.set_brightness(max_b)
+        b.brightness_up_to_max()
         s.switch_perf_profile("balanced")
-        cur = b.get_brightness()
+        cur = b.current()
         if artifacts:
             try:
                 artifacts.save_text("gnome.brightness_balanced_max", "verify", f"brightness={cur}/{max_b}\n", step="check")
@@ -27,14 +27,14 @@ class TestGNOMEBrightness:
         assert cur <= int(max_b * 0.6) + 2  # allow some tolerance
 
     def test_brightness_battery_max(self, artifacts):
-        b = Brightness()
+        b = BrightnessHandler()
         s = System76Power(artifacts=artifacts)
-        max_b = b.get_max_brightness()
+        max_b = b.maximum()
         if max_b is None:
             pytest.skip("no backlight")
-        b.set_brightness(max_b)
+        b.brightness_up_to_max()
         s.switch_perf_profile("battery")
-        cur = b.get_brightness()
+        cur = b.current()
         if artifacts:
             try:
                 artifacts.save_text("gnome.brightness_battery_max", "verify", f"brightness={cur}/{max_b}\n", step="check")
@@ -44,15 +44,15 @@ class TestGNOMEBrightness:
         assert cur <= int(max_b * 0.2) + 2
 
     def test_brightness_balanced_min(self, artifacts):
-        b = Brightness()
+        b = BrightnessHandler()
         s = System76Power(artifacts=artifacts)
-        max_b = b.get_max_brightness()
+        max_b = b.maximum()
         if max_b is None:
             pytest.skip("no backlight")
-        b.set_brightness(0)
-        before = b.get_brightness()
+        b.brightness_down_to_min()
+        before = b.current()
         s.switch_perf_profile("balanced")
-        cur = b.get_brightness()
+        cur = b.current()
         if artifacts:
             try:
                 artifacts.save_text("gnome.brightness_balanced_min", "verify", f"before={before} after={cur}/{max_b}\n", step="check")

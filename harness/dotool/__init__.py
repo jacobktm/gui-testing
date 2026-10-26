@@ -1,4 +1,6 @@
 from .dotool import (
+    brightness_down,
+    brightness_up,
     click,
     drag_and_drop,
     key,
@@ -15,6 +17,8 @@ from .dotool import (
 )
 
 __all__ = [
+    "brightness_down",
+    "brightness_up",
     "click",
     "drag_and_drop",
     "key",

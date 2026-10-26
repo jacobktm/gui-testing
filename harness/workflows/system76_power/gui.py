@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from handlers.brightness import Brightness
+from harness.brightness import BrightnessHandler
 from handlers.system76_power import System76Power
 
 from ...dotool import click, send_keys
@@ -12,7 +12,10 @@ class System76PowerGUIWorkflow(Workflow):
     def __init__(self, artifacts=None):
         super().__init__(artifacts=artifacts)
         self.driver = GuiDriver(artifacts=artifacts)
-        self.brightness = Brightness()
+        self.brightness = BrightnessHandler()
+        # Kept for state save/restore file I/O only.
+        from handlers.brightness import Brightness as _Brightness
+        self._brightness_state = _Brightness()
 
     def open_power_settings(self, os_id: str) -> WorkflowResult:
         """Open power settings via the known click position."""
@@ -97,6 +100,98 @@ class System76PowerGUIWorkflow(Workflow):
             return WorkflowResult(success=True, item_id=item_id, summary=f"graphics {mode}", data={"graphics": mode})
         except Exception as exc:
             return WorkflowResult(success=False, item_id=item_id, summary=str(exc))
+
+
+    def transition_graphics_all(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
+        """Transition graphics modes via GUI clicks, rebooting between transitions.
+
+        Pop!_OS 22.04 is the only release that transitions graphics modes
+        graphically; other releases rely on the CLI workflow.
+        """
+        handler = System76Power(
+            test_id="system76_power.gui.graphics",
+            item_id=item_id,
+            phase="action",
+            artifacts=self.artifacts,
+        )
+        switchable = handler.switchable()
+        if switchable != "switchable":
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="skipped")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
+
+        modes = list(handler.graphics_modes)
+        transitions = [
+            (source, target)
+            for source in modes
+            for target in modes
+            if source != target
+        ]
+
+        # Resume progress from a previous boot: completed pairs are skipped and
+        # their results are carried into the final report.
+        progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
+        results = [
+            entry
+            for entry in (progress.get("results") or [])
+            if isinstance(entry, dict) and entry.get("from") in modes and entry.get("to") in modes
+        ]
+        done = {(entry.get("from"), entry.get("to")) for entry in results}
+        current = handler.get_graphics_mode()
+        persisted_mode = progress.get("current")
+        # Prefer the mode reported by the hardware after the reboot; the stored
+        # value is only a fallback when the query is unavailable.
+        if current not in modes and isinstance(persisted_mode, str) and persisted_mode in modes:
+            current = persisted_mode
+
+        def save_progress() -> None:
+            self.persist_state(
+                item_id,
+                "state",
+                {
+                    "kind": "graphics_transition",
+                    "current": current,
+                    "results": results,
+                    "completed": len(results),
+                },
+            )
+
+        for source, target in transitions:
+            if (source, target) in done:
+                continue
+            if current != source:
+                self.set_graphics_mode_gui(source, os_id=os_id, item_id=f"{item_id}.nav")
+                current = source
+                save_progress()
+                handler.setup_autologin()
+                handler.reboot()
+                handler.wait_for_boot()
+                current = handler.get_graphics_mode()
+            self.set_graphics_mode_gui(target, os_id=os_id, item_id=item_id)
+            current = target
+            save_progress()
+            handler.setup_autologin()
+            handler.reboot()
+            handler.wait_for_boot()
+            current = handler.get_graphics_mode()
+            results.append({"from": source, "to": target, "actual": current})
+            done.add((source, target))
+            save_progress()
+
+        final_report = "\n".join(
+            f"{entry['from']}->{entry['to']} (actual: {entry['actual']})"
+            for entry in results
+        )
+        save_progress()
+        if self.artifacts is not None and item_id:
+            try:
+                self.artifacts.save_text(item_id, "verify", final_report + "\n", step="transition_report")
+            except Exception:
+                pass
+        return WorkflowResult(success=True, item_id=item_id, summary=f"transitions:{len(results)}", data={"transitions": results})
 
 
     def detect_power_profile(
@@ -193,11 +288,11 @@ class System76PowerGUIWorkflow(Workflow):
         )
 
     def ensure_max_brightness(self, item_id: str = "gnome.brightness_setup") -> WorkflowResult:
-        max_b = self.brightness.get_max_brightness()
+        max_b = self.brightness.maximum()
         if max_b is None:
             return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
-        ok = self.brightness.set_brightness(max_b)
-        b = self.brightness.get_brightness()
+        ok = self.brightness.brightness_up_to_max()
+        b = self.brightness.current()
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "setup", f"brightness={b}/{max_b}\n", step="max_brightness")
@@ -209,16 +304,9 @@ class System76PowerGUIWorkflow(Workflow):
         return self.ensure_max_brightness(item_id=item_id)
 
     def set_brightness_min(self, item_id: str = "gnome.brightness_min") -> WorkflowResult:
-        ok = self.brightness.set_brightness(0) if hasattr(self.brightness, 'set_brightness') else False
-        # try setting to lowest
-        try:
-            if self.brightness.backlight:
-                (self.brightness.backlight / "brightness").write_text("0")
-                ok = True
-        except Exception:
-            ok = False
-        b = self.brightness.get_brightness()
-        m = self.brightness.get_max_brightness()
+        ok = self.brightness.brightness_down_to_min()
+        b = self.brightness.current()
+        m = self.brightness.maximum()
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "setup", f"brightness={b}/{m}\n", step="min_brightness")
@@ -227,8 +315,8 @@ class System76PowerGUIWorkflow(Workflow):
         return WorkflowResult(success=ok, item_id=item_id, summary=f"brightness={b}/{m}", data={"brightness": b, "max": m})
 
     def get_brightness(self, item_id: str = "gnome.brightness_get") -> WorkflowResult:
-        b = self.brightness.get_brightness()
-        m = self.brightness.get_max_brightness()
+        b = self.brightness.current()
+        m = self.brightness.maximum()
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "verify", f"brightness={b}/{m}\n", step="brightness")
@@ -237,7 +325,7 @@ class System76PowerGUIWorkflow(Workflow):
         return WorkflowResult(success=b is not None, item_id=item_id, summary=f"{b}/{m}", data={"brightness": b, "max": m})
 
     def save_brightness(self, item_id: str = "gnome.brightness_save") -> WorkflowResult:
-        path = self.brightness.save_state()
+        path = self._brightness_state.save_state()
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "setup", f"saved:{path}\n", step="save")
@@ -246,8 +334,8 @@ class System76PowerGUIWorkflow(Workflow):
         return WorkflowResult(success=path is not None, item_id=item_id, summary=str(path), data={"path": str(path) if path else None})
 
     def restore_brightness(self, item_id: str = "gnome.brightness_restore") -> WorkflowResult:
-        ok = self.brightness.restore_state()
-        b = self.brightness.get_brightness()
+        ok = self._brightness_state.restore_state()
+        b = self.brightness.current()
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "verify", f"restored brightness={b}\n", step="restore")

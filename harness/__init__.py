@@ -20,24 +20,28 @@ from typing import TYPE_CHECKING
 
 __all__ = [
     "artifacts",
+    "brightness",
     "config",
     "display",
     "dotool",
     "gui",
     "imageutils",
     "ollama_client",
+    "reboot",
     "screenshots",
 ]
 
 if TYPE_CHECKING:
     from . import (
         artifacts,
+        brightness,
         config,
         display,
         dotool,
         gui,
         imageutils,
         ollama_client,
+        reboot,
         screenshots,
     )
 

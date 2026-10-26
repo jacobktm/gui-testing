@@ -42,6 +42,30 @@ class TestSystem76PowerGUI:
                 return  # skip visual validation only
             pytest.skip("graphics mode detection not available")
 
+    @pytest.mark.reboot
+    def test_graphics_transitions_all(self, artifacts):
+        """Pop!_OS 22.04: switch graphics modes graphically via dotool clicks."""
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics_all(os_id="pop-22.04")
+        assert res.success, res.summary
+
+    def test_perf_profile_transitions(self, artifacts):
+        """Transition through power profiles via dotool-driven GUI clicks."""
+        from handlers.system76_power import System76Power
+
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        os_id = _os_id()
+        for target in ("battery", "balanced", "performance"):
+            res = wf.set_power_profile_gui(
+                target,
+                os_id=os_id,
+                item_id=f"gui.power_profile_transition_{target}",
+            )
+            assert res.success, res.summary
+            handler = System76Power(artifacts=artifacts)
+            current = handler.get_perf_profile()
+            assert current == target, f"expected profile {target}, got {current}"
+
 
 
 

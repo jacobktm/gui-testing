@@ -88,40 +88,78 @@ class System76PowerCLIWorkflow(Workflow):
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
         modes = list(handler.graphics_modes)
-        # Build transition graph like in handler example
-        transition_graph = {s: [t for t in modes if t != s] for s in modes}
-        stack = [handler.get_graphics_mode() or modes[0]]
-        circuit = []
-        while stack:
-            current = stack[-1]
-            if transition_graph.get(current):
-                next_state = transition_graph[current].pop()
-                stack.append(next_state)
-            else:
-                circuit.append(stack.pop())
-        sequence = circuit[::-1]
+        # Exercise every ordered pair of graphics modes (source -> target).
+        transitions = [
+            (source, target)
+            for source in modes
+            for target in modes
+            if source != target
+        ]
 
-        results = []
-        from_mode = None
-        for mode in sequence:
-            if not from_mode:
-                from_mode = mode
+        # Resume progress from a previous boot: completed pairs are skipped and
+        # their results are carried into the final report.
+        progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
+        results = [
+            entry
+            for entry in (progress.get("results") or [])
+            if isinstance(entry, dict) and entry.get("from") in modes and entry.get("to") in modes
+        ]
+        done = {(entry.get("from"), entry.get("to")) for entry in results}
+        current = handler.get_graphics_mode()
+        persisted_mode = progress.get("current")
+        # Prefer the mode reported by the hardware after the reboot; the stored
+        # value is only a fallback when the query is unavailable.
+        if current not in modes and isinstance(persisted_mode, str) and persisted_mode in modes:
+            current = persisted_mode
+
+        def save_progress() -> None:
+            self.persist_state(
+                item_id,
+                "state",
+                {
+                    "kind": "graphics_transition",
+                    "current": current,
+                    "results": results,
+                    "completed": len(results),
+                },
+            )
+
+        for source, target in transitions:
+            if (source, target) in done:
                 continue
-            if mode == handler.get_graphics_mode():
-                from_mode = mode
-                continue
-            handler.switch_graphics_mode(mode)
-            from_mode = mode
-            results.append(mode)
+            # Move to the source mode before exercising source -> target.
+            if current != source:
+                handler.switch_graphics_mode(source)
+                current = source
+                save_progress()
+                handler.setup_autologin()
+                handler.reboot()
+                handler.wait_for_boot()
+                current = handler.get_graphics_mode()
+            handler.switch_graphics_mode(target)
+            current = target
+            save_progress()
+            handler.setup_autologin()
+            handler.reboot()
+            handler.wait_for_boot()
+            current = handler.get_graphics_mode()
+            results.append({"from": source, "to": target, "actual": current})
+            done.add((source, target))
+            save_progress()
             if self.artifacts is not None and item_id:
                 try:
-                    self.artifacts.save_text(item_id, "action", f"transition -> {mode}\n", step="transition")
+                    self.artifacts.save_text(item_id, "action", f"transition -> {source} to {target}\n", step="transition")
                 except Exception:
                     pass
 
+        final_report = "\n".join(
+            f"{entry['from']}->{entry['to']} (actual: {entry['actual']})"
+            for entry in results
+        )
+        save_progress()
         if self.artifacts is not None and item_id:
             try:
-                self.artifacts.record_item(item_id, status="passed")
+                self.artifacts.save_text(item_id, "verify", final_report + "\n", step="transition_report")
             except Exception:
                 pass
         return WorkflowResult(success=True, item_id=item_id, summary=f"transitions:{len(results)}", data={"transitions": results})

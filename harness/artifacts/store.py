@@ -71,6 +71,8 @@ __all__ = [
     "RunArtifacts",
     "SavedArtifact",
     "STATUS_SKIPPED",
+    "load_state",
+    "save_state",
 ]
 
 
@@ -299,6 +301,36 @@ class RunArtifacts:
             name=name,
             metadata=metadata,
         )
+
+    def save_state(
+        self,
+        item_id: str,
+        phase: str,
+        state: dict[str, Any],
+        *,
+        step: str = "state",
+    ) -> SavedArtifact:
+        """Persist a named state document for resume/transition bookkeeping."""
+        text = json.dumps(state, indent=2, ensure_ascii=False) + "\n"
+        return self._save_text(item_id, phase, text, kind="state", suffix=".json", step=step)
+
+    def load_state(self, item_id: str, phase: str = "state") -> dict[str, Any] | None:
+        """Load the newest persisted state document for an item/phase, if any."""
+        directory = self.phase_dir(item_id, phase, create=False)
+        if not directory.is_dir():
+            return None
+        candidates = sorted(
+            (path for path in directory.iterdir() if path.is_file() and path.suffix == ".json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if not candidates:
+            return None
+        try:
+            loaded = json.loads(candidates[0].read_text(encoding="utf-8"))
+            return loaded if isinstance(loaded, dict) else None
+        except Exception:
+            return None
 
     def finalize(
         self,

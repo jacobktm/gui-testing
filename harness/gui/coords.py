@@ -23,9 +23,10 @@ class Coords:
 
     POP_24 = {
         "open_settings": OPEN,
-        "profile_battery": (0.955, 0.52),
-        "profile_balanced": (0.955, 0.55),
-        "profile_performance": (0.955, 0.6),
+        # Pop!_OS 24.04: profile positions observed after the initial settings click.
+        "profile_battery": (0.955, 0.13),
+        "profile_balanced": (0.955, 0.18),
+        "profile_performance": (0.955, 0.24),
     }
     UBUNTU_26 = {
         "open_settings": OPEN,

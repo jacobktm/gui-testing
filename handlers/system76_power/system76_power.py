@@ -230,6 +230,44 @@ class System76Power:
         else:
             self._log({'type': 'graphics_power_set_failed', 'state': state, 'stderr': result.get('stderr')})
 
+    def reboot(self) -> bool:
+        # If pytest runs as root, make sure the run directory is writable by
+        # the GUI user that will resume the run after the reboot.
+        if self.artifacts is not None:
+            try:
+                from harness.reboot import handover_run_dir
+
+                handover_run_dir(self.artifacts.run_dir)
+            except Exception:
+                pass
+        result = self._run(['systemctl', 'reboot'], check=False)
+        return result.get('returncode') in (0, None)
+
+    def wait_for_boot(self, timeout: float = 600.0) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                state = self._run(['systemctl', 'is-system-running'], check=False)
+                if state.get('returncode') == 0 and (state.get('stdout') or '').strip():
+                    return True
+            except Exception:
+                pass
+            time.sleep(5)
+        return False
+
+    def setup_autologin(self, username: str | None = None) -> bool:
+        """Enable autologin for the detected GUI user.
+
+        Delegates to :mod:`harness.reboot.session`, which knows both the GNOME
+        (gdm) and COSMIC (cosmic-greeter/greetd) configuration formats and
+        restores the previous setup when the run finishes.
+        """
+        try:
+            from harness.reboot import AutologinManager
+
+            return AutologinManager().enable(username=username).enabled
+        except Exception:
+            return False
 
 
 if __name__ == "__main__":

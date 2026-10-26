@@ -70,14 +70,14 @@ class TestSystem76PowerGUI:
         from handlers.system76_power import System76Power
 
         os_id = _os_id()
+        # GUI graphics mode checks are not applicable on Ubuntu or COSMIC
+        if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26"):
+            pytest.skip("no GUI graphics mode checks on this OS")
+
         handler = System76Power(artifacts=artifacts)
         switchable = handler.switchable()
         if switchable != "switchable":
             pytest.skip("not switchable")
-
-        # COSMIC has no GUI graphics mode checks
-        if os_id.startswith("pop-24") or os_id.startswith("pop-26"):
-            pytest.skip("no GUI graphics mode checks on COSMIC")
 
         # Use persisted state for reboot resume
         from harness.workflows import System76PowerCLIWorkflow

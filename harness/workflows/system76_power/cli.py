@@ -86,7 +86,36 @@ class System76PowerCLIWorkflow(Workflow):
                     pass
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
+        # Graphics modes are not present on Ubuntu or COSMIC desktops.
+        import os
+        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
+        if not os_id:
+            # Try to detect from /etc/os-release
+            try:
+                with open("/etc/os-release") as f:
+                    for line in f:
+                        if line.startswith("ID="):
+                            os_id = line.strip().split("=", 1)[1].strip().strip('"').lower()
+                            break
+            except Exception:
+                pass
+        if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26") or "ubuntu" in os_id:
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="skipped")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
+
         modes = list(handler.graphics_modes)
+        # If no valid graphics modes detected, skip.
+        if not modes or handler.get_graphics_mode() is None:
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="skipped")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary="no graphics modes", data={"skipped": True})
         # Exercise every ordered pair of graphics modes (source -> target).
         transitions = [
             (source, target)

@@ -64,63 +64,6 @@ class TestSystem76PowerGUI:
         detected = (res.data or {}).get("profile", "").lower()
         assert detected == target, f"extension shows {detected}, expected {target}"
 
-    @pytest.mark.reboot
-    def test_cli_graphics_change_reflected_in_extension(self, artifacts):
-        """Switch graphics mode via CLI, reboot, verify panel applet reflects it."""
-        from handlers.system76_power import System76Power
-
-        os_id = _os_id()
-        # GUI graphics mode checks are not applicable on Ubuntu or COSMIC
-        if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26"):
-            pytest.skip("no GUI graphics mode checks on this OS")
-
-        handler = System76Power(artifacts=artifacts)
-        switchable = handler.switchable()
-        if switchable != "switchable":
-            pytest.skip("not switchable")
-
-        # Use persisted state for reboot resume
-        from harness.workflows import System76PowerCLIWorkflow
-        from harness.artifacts import RunArtifacts
-
-        progress_key = "cli.graphics_reflection"
-        state = None
-        if artifacts is not None:
-            try:
-                state = artifacts.load_state(progress_key, phase="state")
-            except Exception:
-                state = None
-
-        if not isinstance(state, dict) or state.get("phase") != "after":
-            # First invocation: switch to integrated, save state, reboot
-            handler.switch_graphics_mode("integrated")
-            if artifacts is not None:
-                try:
-                    artifacts.save_state(progress_key, "state", {"phase": "after", "expected": "integrated"})
-                except Exception:
-                    pass
-            handler.setup_autologin()
-            handler.reboot()
-            handler.wait_for_boot()
-            # Process killed by reboot; resumed run handles detection
-            return
-
-        # Resumed invocation: detect graphics mode via GUI
-        expected = state.get("expected", "integrated")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        try:
-            res = wf.detect_graphics_mode(os_id=os_id)
-        except Exception:
-            if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26"):
-                return
-            pytest.skip("graphics mode detection not available")
-            return
-        if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26"):
-            return
-        assert res.success, res.summary
-        detected = (res.data or {}).get("graphics", "").lower()
-        assert detected == expected, f"extension shows {detected}, expected {expected}"
-
     def test_perf_profile_transitions(self, artifacts):
         """Transition through power profiles via dotool-driven GUI clicks."""
         from handlers.system76_power import System76Power

@@ -397,6 +397,53 @@ class System76PowerCLIWorkflow(Workflow):
         summary = f"transitions:{len(results)} verified:{len(results)-len(failed)} failed:{len(failed)}"
         return WorkflowResult(success=all_ok and len(failed) == 0, item_id=item_id, summary=summary, data={"transitions": results, "order": order})
 
+    def verify_cli_graphics_reflected_in_extension(self, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
+        """Aggregate GUI verification from all CLI graphics transitions.
+
+        Loads persisted state from each individual transition and checks
+        that the panel applet reflected the new graphics mode after every
+        CLI-initiated transition + reboot.  This is the test for the
+        checklist item 'switchable graphics changes from the CLI are
+        reflected in the extension'.
+        """
+        modes = ["nvidia", "integrated", "hybrid", "compute"]
+        pairs = [(s, t) for s in modes for t in modes if s != t]
+
+        gui_results = []
+        all_gui_ok = True
+        any_gui_ran = False
+        for source, target in pairs:
+            trans_item_id = f"{item_id}.{source}_to_{target}"
+            progress = self.resume_progress(trans_item_id, kind="graphics_transition")
+            results = progress.get("results", [])
+            entry = next(
+                (e for e in results if e.get("from") == source and e.get("to") == target),
+                None,
+            )
+            gui_v = entry.get("gui_verified") if isinstance(entry, dict) else None
+            if gui_v is not None:
+                any_gui_ran = True
+                if not gui_v:
+                    all_gui_ok = False
+            gui_results.append({"from": source, "to": target, "gui_verified": gui_v})
+
+        if not any_gui_ran:
+            return WorkflowResult(
+                success=True,
+                item_id=item_id,
+                summary="no GUI verification data (not 22.04 or transitions not run)",
+                data={"gui_results": gui_results, "skipped": True},
+            )
+
+        failed = [r for r in gui_results if r["gui_verified"] is False]
+        summary = f"gui_reflected: {len(gui_results) - len(failed)}/{len(gui_results)} passed"
+        return WorkflowResult(
+            success=all_gui_ok,
+            item_id=item_id,
+            summary=summary,
+            data={"gui_results": gui_results},
+        )
+
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:
         handler = System76Power(
             test_id="system76_power.cli.graphics_power",

@@ -44,6 +44,7 @@ from .session import (
     render_gdm_autologin,
     render_lightdm_autologin,
     render_sddm_autologin,
+    force_restore_autologin,
     restore_autologin,
 )
 
@@ -60,6 +61,7 @@ __all__ = [
     "detect_gui_user",
     "detect_session",
     "finish_reboot",
+    "force_restore_autologin",
     "install_resume_unit",
     "load_completed",
     "prepare_reboot",
@@ -167,6 +169,13 @@ def finish_reboot(*, username: str | None = None) -> bool:
                     pass
 
     restored = restore_autologin()
+    if not restored:
+        # Fallback: force-remove autologin config without state file.
+        try:
+            from .session import force_restore_autologin
+            restored = force_restore_autologin()
+        except Exception:
+            pass
     # Also try to clean up sudoers (best-effort).
     try:
         subprocess.run(

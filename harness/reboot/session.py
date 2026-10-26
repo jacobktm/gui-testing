@@ -40,6 +40,7 @@ __all__ = [
     "render_gdm_autologin",
     "render_lightdm_autologin",
     "render_sddm_autologin",
+    "force_restore_autologin",
     "restore_autologin",
 ]
 
@@ -592,6 +593,38 @@ class AutologinManager:
         if ok:
             _remove_privileged(self.state_path)
         return ok
+
+
+def force_restore_autologin() -> bool:
+    """Aggressively restore autologin config without relying on state file.
+
+    Removes [initial_session] from greetd configs and AutomaticLogin from
+    gdm configs.  Used when the state file is missing or restore failed.
+    """
+    ok = True
+    # COSMIC / greetd
+    for config_path in (COSMIC_GREETER_CONFIG, GREETD_CONFIG):
+        if config_path.exists():
+            text = _read_privileged(config_path)
+            if text is not None and "[initial_session]" in text:
+                cleaned = strip_toml_section(text, "initial_session").rstrip() + "\n"
+                if not _write_privileged(config_path, cleaned):
+                    ok = False
+    # GNOME / gdm
+    for config_path in GDM_CONFIGS:
+        if config_path.exists():
+            text = _read_privileged(config_path)
+            if text is not None and "AutomaticLogin" in text:
+                cleaned = _set_ini_section_keys(text, "daemon", {
+                    "AutomaticLoginEnable": "false",
+                })
+                # Remove AutomaticLogin line
+                lines = cleaned.splitlines()
+                lines = [l for l in lines if not l.strip().startswith("AutomaticLogin=")]
+                cleaned = "\n".join(lines) + "\n"
+                if not _write_privileged(config_path, cleaned):
+                    ok = False
+    return ok
 
 
 def restore_autologin(*, state_path: Path | str | None = None) -> bool:

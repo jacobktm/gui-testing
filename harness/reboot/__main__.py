@@ -103,6 +103,10 @@ def main(argv: list[str] | None = None) -> int:
         from .autostart import remove_resume_unit
         remove_resume_unit(username=session.username)
         restored = AutologinManager(session).restore()
+        if not restored:
+            from .session import force_restore_autologin
+            restored = force_restore_autologin()
+            print(f"force restore: {restored}")
         print(f"autologin restored: {restored}")
         return 0 if restored else 1
 

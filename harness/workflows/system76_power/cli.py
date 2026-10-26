@@ -165,49 +165,37 @@ class System76PowerCLIWorkflow(Workflow):
             print(f"  Warning: {current!r} not in modes list, falling back to {modes[0]!r}", flush=True)
             current = modes[0]
 
-        # Build adjacency list: all directed edges source -> target.
-        adj = {m: [t for t in modes if t != m] for m in modes}
+        # Fixed chained order: each transition's source is the previous
+        # transition's target, avoiding redundant mode switches.
+        # Starts from 'integrated' (transition_to_integrated ensures this).
+        chained_order = [
+            ("integrated", "nvidia"),
+            ("nvidia", "hybrid"),
+            ("hybrid", "compute"),
+            ("compute", "integrated"),
+            ("integrated", "hybrid"),
+            ("hybrid", "nvidia"),
+            ("nvidia", "compute"),
+            ("compute", "hybrid"),
+            ("hybrid", "integrated"),
+            ("integrated", "compute"),
+            ("compute", "nvidia"),
+            ("nvidia", "integrated"),
+        ]
+        # Filter to only include modes that exist on this system.
+        path = [(s, t) for s, t in chained_order if s in modes and t in modes]
 
-        # If not starting in integrated, force the first edge to be
-        # current -> integrated so we transition to integrated first.
-        # Remove that edge from the adjacency list.
-        forced_first = None
-        if current != "integrated" and "integrated" in modes:
-            forced_first = (current, "integrated")
-            adj[current].remove("integrated")
+        # If not starting in integrated, prepend the transition to integrated.
+        if current != "integrated" and "integrated" in modes and current in modes:
+            forced = (current, "integrated")
+            if forced not in path:
+                path = [forced] + path
 
-        # Hierholzer's algorithm for Eulerian circuit starting from
-        # 'integrated' (or current if already integrated).
-        start_node = "integrated" if "integrated" in modes else current
-        stack = [start_node]
-        route = []
-        while stack:
-            v = stack[-1]
-            if adj[v]:
-                w = adj[v].pop()
-                stack.append(w)
-            else:
-                route.append(stack.pop())
-        route.reverse()
-        # route is a list of nodes; convert to edges.
-        transitions = [(route[i], route[i + 1]) for i in range(len(route) - 1)]
-        # Deduplicate while preserving order.
-        seen = set()
-        unique = []
-        for edge in transitions:
-            if edge not in seen:
-                seen.add(edge)
-                unique.append(edge)
-
-        # Prepend the forced first edge if applicable.
-        if forced_first is not None:
-            unique = [forced_first] + unique
-
-        print(f"Starting mode: {current!r}, first transition to integrated: {forced_first is not None}", flush=True)
-        print(f"Transition order ({len(unique)} pairs):", flush=True)
-        for src, tgt in unique:
+        print(f"Starting mode: {current!r}", flush=True)
+        print(f"Transition order ({len(path)} pairs):", flush=True)
+        for src, tgt in path:
             print(f"  {src} -> {tgt}", flush=True)
-        return unique
+        return path
 
     def transition_graphics(self, source: str, target: str, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
         """Execute a single graphics mode transition (source -> target).

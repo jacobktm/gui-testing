@@ -99,19 +99,57 @@ class System76PowerGUIWorkflow(Workflow):
             return WorkflowResult(success=False, item_id=item_id, summary=str(exc))
 
 
-    def transition_graphics_all(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
-        """Transition graphics modes via GUI clicks, rebooting between transitions.
+    def get_transition_order(self, item_id: str = "gui.graphics_transitions") -> list[tuple[str, str]]:
+        """Determine chained transition order (same as CLI)."""
+        handler = System76Power(
+            test_id="system76_power.gui.graphics",
+            item_id=item_id,
+            phase="verify",
+            artifacts=self.artifacts,
+        )
+        switchable = handler.switchable()
+        if switchable != "switchable":
+            return []
 
-        Pop!_OS 22.04 is the only release that transitions graphics modes
-        graphically; other releases rely on the CLI workflow.
-        """
+        modes = list(handler.graphics_modes)
+        current = handler.get_graphics_mode()
+        if current not in modes:
+            current = modes[0] if modes else None
+        if current is None:
+            return []
+
+        chained_order = [
+            ("integrated", "nvidia"),
+            ("nvidia", "hybrid"),
+            ("hybrid", "compute"),
+            ("compute", "integrated"),
+            ("integrated", "hybrid"),
+            ("hybrid", "nvidia"),
+            ("nvidia", "compute"),
+            ("compute", "hybrid"),
+            ("hybrid", "integrated"),
+            ("integrated", "compute"),
+            ("compute", "nvidia"),
+            ("nvidia", "integrated"),
+        ]
+        path = [(s, t) for s, t in chained_order if s in modes and t in modes]
+
+        if current != "integrated" and "integrated" in modes and current in modes:
+            forced = (current, "integrated")
+            if forced not in path:
+                path = [forced] + path
+
+        return path
+
+    def transition_to_integrated(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transition.to_integrated") -> WorkflowResult:
+        """Transition from current mode to integrated via GUI clicks."""
         if not os_id.startswith("pop-22"):
             if self.artifacts is not None and item_id:
                 try:
                     self.artifacts.record_item(item_id, status="skipped")
                 except Exception:
                     pass
-            return WorkflowResult(success=True, item_id=item_id, summary="GUI graphics not applicable on this OS", data={"skipped": True})
+            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
 
         handler = System76Power(
             test_id="system76_power.gui.graphics",
@@ -128,87 +166,123 @@ class System76PowerGUIWorkflow(Workflow):
                     pass
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
-        modes = list(handler.graphics_modes)
-        transitions = [
-            (source, target)
-            for source in modes
-            for target in modes
-            if source != target
-        ]
-
-        # Resume progress from a previous boot: completed pairs are skipped and
-        # their results are carried into the final report.
-        progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
-        results = [
-            entry
-            for entry in (progress.get("results") or [])
-            if isinstance(entry, dict) and entry.get("from") in modes and entry.get("to") in modes
-        ]
-        done = {(entry.get("from"), entry.get("to")) for entry in results}
         current = handler.get_graphics_mode()
-        persisted_mode = progress.get("current")
-        # Prefer the mode reported by the hardware after the reboot; the stored
-        # value is only a fallback when the query is unavailable.
-        if current not in modes and isinstance(persisted_mode, str) and persisted_mode in modes:
-            current = persisted_mode
+        if current == "integrated":
+            return WorkflowResult(success=True, item_id=item_id, summary="already integrated", data={"from": current, "to": "integrated", "actual": current, "verified": True})
 
-        def save_progress() -> None:
-            self.persist_state(
-                item_id,
-                "state",
-                {
-                    "kind": "graphics_transition",
-                    "current": current,
-                    "results": results,
-                    "completed": len(results),
-                },
-            )
+        # Switch to integrated via GUI
+        self.set_graphics_mode_gui("integrated", os_id=os_id, item_id=item_id)
+        handler.setup_autologin()
+        handler.reboot()
+        handler.wait_for_boot()
+        current = handler.get_graphics_mode()
+        verified = (current == "integrated")
+        return WorkflowResult(success=verified, item_id=item_id, summary=f"to_integrated (actual: {current}, verified={verified})", data={"from": current, "to": "integrated", "actual": current, "verified": verified})
 
+    def transition_graphics(self, source: str, target: str, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
+        """Execute a single graphics mode transition via GUI clicks."""
+        if not os_id.startswith("pop-22"):
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="skipped")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
+
+        handler = System76Power(
+            test_id="system76_power.gui.graphics",
+            item_id=item_id,
+            phase="action",
+            artifacts=self.artifacts,
+        )
+        switchable = handler.switchable()
+        if switchable != "switchable":
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="skipped")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
+
+        # Switch to target via GUI
+        self.set_graphics_mode_gui(target, os_id=os_id, item_id=item_id)
+        handler.setup_autologin()
+        handler.reboot()
+        handler.wait_for_boot()
+        current = handler.get_graphics_mode()
+        verified = (current == target)
+
+        # On 22.04, also verify via GUI detection
+        gui_verified = None
+        try:
+            det = self.detect_graphics_mode(os_id=os_id)
+            if det.success:
+                detected = (det.data or {}).get("graphics", "").lower()
+                gui_verified = (detected == target.lower())
+        except Exception:
+            gui_verified = None
+
+        if gui_verified is not None:
+            verified = verified and gui_verified
+
+        return WorkflowResult(
+            success=verified,
+            item_id=item_id,
+            summary=f"{source}->{target} (actual: {current}, verified={verified})",
+            data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
+        )
+
+    def transition_graphics_all(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
+        """Run all graphics transitions via GUI in the order determined by starting mode."""
+        if not os_id.startswith("pop-22"):
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="skipped")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
+
+        handler = System76Power(
+            test_id="system76_power.gui.graphics",
+            item_id=item_id,
+            phase="action",
+            artifacts=self.artifacts,
+        )
+        switchable = handler.switchable()
+        if switchable != "switchable":
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="skipped")
+                except Exception:
+                    pass
+            return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
+
+        # First, ensure we start in integrated mode.
+        to_int = self.transition_to_integrated(os_id=os_id, item_id=f"{item_id}.to_integrated")
+
+        order = self.get_transition_order(item_id=item_id)
+        results = []
         all_ok = True
-        for source, target in transitions:
-            if (source, target) in done:
-                continue
-            source_ok = True
-            if current != source:
-                self.set_graphics_mode_gui(source, os_id=os_id, item_id=f"{item_id}.nav")
-                current = source
-                save_progress()
-                handler.setup_autologin()
-                handler.reboot()
-                handler.wait_for_boot()
-                current = handler.get_graphics_mode()
-                source_ok = (current == source)
-                if not source_ok:
-                    all_ok = False
-            self.set_graphics_mode_gui(target, os_id=os_id, item_id=item_id)
-            current = target
-            save_progress()
-            handler.setup_autologin()
-            handler.reboot()
-            handler.wait_for_boot()
-            current = handler.get_graphics_mode()
-            target_ok = (current == target)
-            if not target_ok:
+        for source, target in order:
+            res = self.transition_graphics(source, target, os_id=os_id, item_id=f"{item_id}.{source}_to_{target}")
+            entry = res.data if res.data else {"from": source, "to": target, "actual": None, "verified": res.success}
+            results.append(entry)
+            if not res.success:
                 all_ok = False
-            verified = source_ok and target_ok
-            results.append({"from": source, "to": target, "actual": current, "verified": verified})
-            done.add((source, target))
-            save_progress()
 
         final_report = "\n".join(
-            f"{entry['from']}->{entry['to']} (actual: {entry['actual']}, verified={entry.get('verified', '?')})"
-            for entry in results
+            f"{e['from']}->{e['to']} (actual: {e.get('actual')}, verified={e.get('verified', '?')})"
+            for e in results
         )
-        save_progress()
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "verify", final_report + "\n", step="transition_report")
             except Exception:
                 pass
+
         failed = [e for e in results if not e.get("verified", True)]
         summary = f"transitions:{len(results)} verified:{len(results)-len(failed)} failed:{len(failed)}"
-        return WorkflowResult(success=all_ok and len(failed) == 0, item_id=item_id, summary=summary, data={"transitions": results})
-
+        return WorkflowResult(success=all_ok and len(failed) == 0, item_id=item_id, summary=summary, data={"transitions": results, "order": order})
 
     def detect_power_profile(
         self,

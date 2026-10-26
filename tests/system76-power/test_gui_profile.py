@@ -67,6 +67,124 @@ class TestSystem76PowerGUI:
         detected = (res.data or {}).get("profile", "").lower()
         assert detected == target, f"extension shows {detected}, expected {target}"
 
+    @pytest.mark.reboot
+    def test_gui_transition_to_integrated(self, artifacts):
+        """Pop!_OS 22.04 only."""
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_to_integrated(os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_integrated_to_nvidia(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("integrated", "nvidia", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_nvidia_to_hybrid(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("nvidia", "hybrid", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_hybrid_to_compute(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("hybrid", "compute", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_compute_to_integrated(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("compute", "integrated", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_integrated_to_hybrid(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("integrated", "hybrid", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_hybrid_to_nvidia(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("hybrid", "nvidia", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_nvidia_to_compute(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("nvidia", "compute", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_compute_to_hybrid(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("compute", "hybrid", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_hybrid_to_integrated(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("hybrid", "integrated", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_integrated_to_compute(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("integrated", "compute", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_compute_to_nvidia(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("compute", "nvidia", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_nvidia_to_integrated(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("nvidia", "integrated", os_id="pop-22.04")
+        assert res.success, res.summary
+
     def test_perf_profile_transitions(self, artifacts):
         """Transition through power profiles via dotool-driven GUI clicks."""
         from handlers.system76_power import System76Power

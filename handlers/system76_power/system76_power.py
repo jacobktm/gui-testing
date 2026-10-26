@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -79,47 +80,64 @@ class System76Power:
     def _run(self, cmd: list[str], check: bool = False, timeout: float | None = 120.0, retries: int = 2):
         """Run a command with retry on timeout.
 
-        system76-power can occasionally hang (e.g. daemon busy applying
-        profile changes).  Retrying after a short delay usually succeeds.
+        Uses Popen with start_new_session=True so the child gets its own
+        process group.  On timeout the entire group is killed to avoid
+        orphaned grandchildren holding pipes open.
         """
         last_exc = None
         for attempt in range(retries + 1):
             started = time.time()
+            proc = None
             try:
-                result = subprocess.run(
+                proc = subprocess.Popen(
                     cmd,
-                    check=check,
-                    capture_output=True,
-                    timeout=timeout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     start_new_session=True,
                     close_fds=True,
                 )
+                try:
+                    stdout, stderr = proc.communicate(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    # Kill the entire process group.
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except (OSError, ProcessLookupError):
+                        try:
+                            proc.kill()
+                        except (OSError, ProcessLookupError):
+                            pass
+                    stdout, stderr = proc.communicate()
+                    raise
+
                 ended = time.time()
                 record = {
                     'command': cmd,
-                    'returncode': result.returncode,
-                    'stdout': result.stdout.decode(encoding='utf-8', errors='replace'),
-                    'stderr': result.stderr.decode(encoding='utf-8', errors='replace'),
+                    'returncode': proc.returncode,
+                    'stdout': stdout.decode(encoding='utf-8', errors='replace'),
+                    'stderr': stderr.decode(encoding='utf-8', errors='replace'),
                     'duration': ended - started,
                     'attempt': attempt,
                 }
                 self._log({'type': 'command', **record})
+                if check and proc.returncode != 0:
+                    raise subprocess.CalledProcessError(proc.returncode, cmd, stdout, stderr)
                 return record
+
             except subprocess.TimeoutExpired as e:
                 ended = time.time()
                 last_exc = e
                 record = {
                     'command': cmd,
                     'returncode': None,
-                    'stdout': e.stdout.decode(encoding='utf-8', errors='replace') if e.stdout else '',
-                    'stderr': e.stderr.decode(encoding='utf-8', errors='replace') if e.stderr else '',
+                    'stdout': (e.stdout or b'').decode(encoding='utf-8', errors='replace') if e.stdout else '',
+                    'stderr': (e.stderr or b'').decode(encoding='utf-8', errors='replace') if e.stderr else '',
                     'duration': ended - started,
                     'timeout': timeout,
                     'attempt': attempt,
                 }
                 self._log({'type': 'command_timeout', **record})
                 if attempt < retries:
-                    # Wait before retrying; daemon may be busy.
                     time.sleep(5 * (attempt + 1))
             except subprocess.CalledProcessError as e:
                 ended = time.time()
@@ -135,6 +153,16 @@ class System76Power:
                 if check:
                     raise
                 return record
+            finally:
+                if proc is not None:
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            proc.kill()
+                            proc.wait()
+                        except (OSError, ProcessLookupError):
+                            pass
         # All retries exhausted.
         raise last_exc
 

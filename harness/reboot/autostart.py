@@ -165,8 +165,8 @@ fi
 
 # Also show a desktop notification with the log path (best-effort)
 if command -v notify-send >/dev/null 2>&1; then
-    if [ -f "${XDG_RUNTIME_DIR:-/tmp}/gui-testing-watch.sh" ]; then
-        notify-send "GUI Testing" "Resuming pytest run.\nWatch: sh ${XDG_RUNTIME_DIR:-/tmp}/gui-testing-watch.sh\nLog: $LOG_FILE" >/dev/null 2>&1 &
+    if [ -f "${{XDG_RUNTIME_DIR:-/tmp}}/gui-testing-watch.sh" ]; then
+        notify-send "GUI Testing" "Resuming pytest run.\nWatch: sh ${{XDG_RUNTIME_DIR:-/tmp}}/gui-testing-watch.sh\nLog: $LOG_FILE" >/dev/null 2>&1 &
     else
         notify-send "GUI Testing" "Resuming pytest run.\nLog: $LOG_FILE" >/dev/null 2>&1 &
     fi

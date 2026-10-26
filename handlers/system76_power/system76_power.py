@@ -32,29 +32,9 @@ class System76Power:
         self.graphics = None
         self._graphics_loaded = False
 
-        # Initialize performance profile state while logging
-        profile_result = self._run(['system76-power', 'profile'])
-        if profile_result["returncode"] == 0:
-            try:
-                output = profile_result["stdout"].split('\n')[0]
-                if ': ' in output:
-                    self.performance = output.split(': ')[1].strip().lower()
-                elif output.strip():
-                    self.performance = output.strip().lower()
-            except Exception:
-                pass
-
     def _ensure_graphics(self):
-        """Lazy-load graphics mode (avoids slow GPU probe in profile-only tests)."""
-        if self._graphics_loaded:
-            return
-        self._graphics_loaded = True
-        graphics_result = self._run(['system76-power', 'graphics'], check=False)
-        if graphics_result["returncode"] == 0 and graphics_result["stdout"].strip():
-            try:
-                self.graphics = graphics_result["stdout"].split('\n')[0].strip()
-            except Exception:
-                pass
+        """No-op: graphics state is always fetched directly from the CLI."""
+        pass
 
     def _resolve_log_path(self, log_dir: str | Path | None, log_path: str | Path | None) -> Path | None:
         if log_path is not None:
@@ -165,13 +145,13 @@ class System76Power:
 
     def switch_perf_profile(self, profile=None):
         if not profile:
+            if not self.performance:
+                self.performance = self.get_perf_profile()
             if not self.performance or self.performance not in self.perf_profiles:
                 return
             idx = self.perf_profiles.index(self.performance)
             profile = self.perf_profiles[(idx + 1) % len(self.perf_profiles)]
-        if self.performance == profile:
-            self._log({'type': 'perf_profile_nochange', 'profile': profile})
-            return
+        # Always call the CLI directly; do not short-circuit on cached state.
         result = self._run(['system76-power', 'profile', profile], check=False)
         if result['returncode'] == 0:
             self.performance = profile
@@ -194,8 +174,6 @@ class System76Power:
 
     def get_graphics_mode(self):
         self._ensure_graphics()
-        if self.graphics is not None:
-            return self.graphics
         result = self._run(['system76-power', 'graphics'], check=False)
         if result['returncode'] == 0 and result['stdout'].strip():
             try:
@@ -207,13 +185,13 @@ class System76Power:
     def switch_graphics_mode(self, mode=None):
         self._ensure_graphics()
         if not mode:
+            if not self.graphics:
+                self.graphics = self.get_graphics_mode()
             if not self.graphics or self.graphics not in self.graphics_modes:
                 return
             idx = self.graphics_modes.index(self.graphics)
             mode = self.graphics_modes[(idx + 1) % len(self.graphics_modes)]
-        if self.graphics == mode or not self.graphics:
-            self._log({'type': 'graphics_mode_nochange', 'mode': mode})
-            return
+        # Always call the CLI directly; do not short-circuit on cached state.
         result = self._run(['system76-power', 'graphics', mode], check=False)
         if result['returncode'] == 0:
             self.graphics = mode

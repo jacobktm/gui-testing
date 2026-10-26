@@ -154,6 +154,16 @@ def pytest_collection_modifyitems(config, items):
                 # Replace test body with no-op to avoid side effects.
                 item.runtest = lambda: None
 
+    # Skip individual graphics transition tests by default; they are covered
+    # by the orchestrator (test_graphics_transitions_all) which runs them in
+    # the correct order.  Run them explicitly with -m graphics_individual.
+    skip_individual = pytest.mark.skip(
+        reason="individual transition covered by orchestrator; use -m graphics_individual to run"
+    )
+    for item in items:
+        if item.get_closest_marker("graphics_individual") and not item.get_closest_marker("skip"):
+            item.add_marker(skip_individual)
+
     # Avoid running destructive/state-changing tests by default on a dev box.
     if os.environ.get("RUN_DESTRUCTIVE_TESTS", "1") != "1":
         skip_destructive = pytest.mark.skip(

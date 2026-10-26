@@ -150,7 +150,7 @@ cat > "$DESKTOP_FILE" << DESKTOP_EOF
 [Desktop Entry]
 Type=Application
 Name=GUI Test Progress
-Exec=sh -c "tail -f $LOG_FILE"
+Exec=sh -c "tail -n +1 -f $LOG_FILE"
 Terminal=true
 DESKTOP_EOF
 update-desktop-database "$HOME/.local/share/applications/" >/dev/null 2>&1

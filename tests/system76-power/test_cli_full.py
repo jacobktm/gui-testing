@@ -47,6 +47,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "nvidia", item_id="cli.graphics_transition.integrated_to_nvidia")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_integrated_to_hybrid(self, artifacts):
@@ -55,6 +62,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "hybrid", item_id="cli.graphics_transition.integrated_to_hybrid")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_integrated_to_compute(self, artifacts):
@@ -63,6 +77,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "compute", item_id="cli.graphics_transition.integrated_to_compute")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_nvidia_to_integrated(self, artifacts):
@@ -71,6 +92,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "integrated", item_id="cli.graphics_transition.nvidia_to_integrated")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_nvidia_to_hybrid(self, artifacts):
@@ -79,6 +107,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "hybrid", item_id="cli.graphics_transition.nvidia_to_hybrid")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_nvidia_to_compute(self, artifacts):
@@ -87,6 +122,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "compute", item_id="cli.graphics_transition.nvidia_to_compute")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_hybrid_to_integrated(self, artifacts):
@@ -95,6 +137,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "integrated", item_id="cli.graphics_transition.hybrid_to_integrated")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_hybrid_to_nvidia(self, artifacts):
@@ -103,6 +152,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "nvidia", item_id="cli.graphics_transition.hybrid_to_nvidia")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_hybrid_to_compute(self, artifacts):
@@ -111,6 +167,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "compute", item_id="cli.graphics_transition.hybrid_to_compute")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_compute_to_integrated(self, artifacts):
@@ -119,6 +182,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "integrated", item_id="cli.graphics_transition.compute_to_integrated")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_compute_to_nvidia(self, artifacts):
@@ -127,6 +197,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "nvidia", item_id="cli.graphics_transition.compute_to_nvidia")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transition_compute_to_hybrid(self, artifacts):
@@ -135,6 +212,13 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "hybrid", item_id="cli.graphics_transition.compute_to_hybrid")
         assert res.success, res.summary
+        data = res.data or {}
+        # CLI verification must pass
+        assert data.get("verified") is True, f"CLI verification failed: {data}"
+        # GUI verification (22.04 only) must also pass when it ran
+        gui_v = data.get("gui_verified")
+        if gui_v is not None:
+            assert gui_v is True, f"GUI verification failed: {data}"
 
     @pytest.mark.reboot
     def test_graphics_transitions_all(self, artifacts):
@@ -146,3 +230,8 @@ class TestSystem76PowerCLIFull:
         print(f"Transition order: {order}")
         res = wf.transition_graphics_all()
         assert res.success, res.summary
+        for entry in (res.data or {}).get("transitions", []):
+            assert entry.get("verified") is True, f"CLI verification failed: {entry}"
+            gui_v = entry.get("gui_verified")
+            if gui_v is not None:
+                assert gui_v is True, f"GUI verification failed: {entry}"

@@ -1,17 +1,19 @@
 """Brightness handling for the harness.
 
-Unlike :mod:`handlers.brightness`, which writes directly to sysfs (and
-therefore needs root), this module drives the screen's brightness keys
-through dotool and reads the resulting value back from sysfs.  It can be
-used without sudo.
+Drives the screen's brightness keys through dotool and reads the
+resulting value back from sysfs.  Does not need sudo.
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 import time
 from pathlib import Path
 from typing import Optional
+
+STATE_PATH = Path.home() / ".local/share/gui-testing/brightness.json"
+
 
 __all__ = [
     "BrightnessHandler",
@@ -68,6 +70,45 @@ class BrightnessHandler:
 
     def maximum(self) -> Optional[int]:
         return get_max_brightness(self.backlight)
+
+    def save_state(self, path=None) -> "Path | None":
+        """Save current brightness to a JSON file (no sudo needed)."""
+        if path is None:
+            path = STATE_PATH
+        path = Path(path)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            state = {"brightness": self.current(), "max_brightness": self.maximum()}
+            path.write_text(json.dumps(state))
+            return path
+        except Exception:
+            return None
+
+    def restore_state(self, path=None) -> bool:
+        """Restore brightness from a saved JSON file."""
+        if path is None:
+            path = STATE_PATH
+        path = Path(path)
+        if not path.exists():
+            return False
+        try:
+            state = json.loads(path.read_text())
+            b = state.get("brightness")
+            if b is not None:
+                # Use dotool to set brightness: go to min then up
+                self.brightness_down_to_min()
+                # Can't set exact value via dotool, so just restore via sysfs
+                # if writable (may need sudo on some systems)
+                try:
+                    if self.backlight:
+                        (self.backlight / "brightness").write_text(str(b))
+                        return True
+                except (PermissionError, OSError):
+                    pass
+                return False
+        except Exception:
+            return False
+        return False
 
     def is_at_max(self) -> bool:
         c = self.current()

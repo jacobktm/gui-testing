@@ -13,9 +13,6 @@ class System76PowerGUIWorkflow(Workflow):
         super().__init__(artifacts=artifacts)
         self.driver = GuiDriver(artifacts=artifacts)
         self.brightness = BrightnessHandler()
-        # Kept for state save/restore file I/O only.
-        from handlers.brightness import Brightness as _Brightness
-        self._brightness_state = _Brightness()
 
     def open_power_settings(self, os_id: str) -> WorkflowResult:
         """Open power settings via the known click position."""
@@ -324,24 +321,6 @@ class System76PowerGUIWorkflow(Workflow):
                 pass
         return WorkflowResult(success=b is not None, item_id=item_id, summary=f"{b}/{m}", data={"brightness": b, "max": m})
 
-    def save_brightness(self, item_id: str = "gnome.brightness_save") -> WorkflowResult:
-        path = self._brightness_state.save_state()
-        if self.artifacts is not None and item_id:
-            try:
-                self.artifacts.save_text(item_id, "setup", f"saved:{path}\n", step="save")
-            except Exception:
-                pass
-        return WorkflowResult(success=path is not None, item_id=item_id, summary=str(path), data={"path": str(path) if path else None})
-
-    def restore_brightness(self, item_id: str = "gnome.brightness_restore") -> WorkflowResult:
-        ok = self._brightness_state.restore_state()
-        b = self.brightness.current()
-        if self.artifacts is not None and item_id:
-            try:
-                self.artifacts.save_text(item_id, "verify", f"restored brightness={b}\n", step="restore")
-            except Exception:
-                pass
-        return WorkflowResult(success=ok, item_id=item_id, summary=f"brightness={b}", data={"brightness": b})
 
 
 

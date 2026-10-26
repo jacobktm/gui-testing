@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from handlers.brightness import Brightness
+from harness.brightness import BrightnessHandler
 from handlers.system76_power import System76Power
 
 from ..base import Workflow, WorkflowResult
@@ -9,7 +9,7 @@ from ..base import Workflow, WorkflowResult
 class System76PowerWorkflow(Workflow):
     def __init__(self, artifacts=None):
         super().__init__(artifacts=artifacts)
-        self.brightness = Brightness()
+        self.brightness = BrightnessHandler()
 
     def check_profile(self, item_id: str = "cli.power_profile_query_set") -> WorkflowResult:
         handler = System76Power(
@@ -38,8 +38,8 @@ class System76PowerWorkflow(Workflow):
         )
 
     def check_brightness(self, item_id: str = "power.brightness") -> WorkflowResult:
-        b = self.brightness.get_brightness()
-        m = self.brightness.get_max_brightness()
+        b = self.brightness.current()
+        m = self.brightness.maximum()
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(

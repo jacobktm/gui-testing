@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -215,12 +216,20 @@ def pytest_sessionfinish(session, exitstatus):
     config = session.config
     _finalize_run(config)
     setup = getattr(config, "_gui_reboot_setup", None)
-    if setup is None or os.environ.get("GUI_TESTING_KEEP_REBOOT_SETUP") == "1":
-        return
-    # A reboot kills this process, so this only runs once the run really
-    # finishes (or is interrupted); restore the machine either way.
-    finish_reboot(username=setup.username)
-    config._gui_reboot_finished = True
+    if setup is not None and os.environ.get("GUI_TESTING_KEEP_REBOOT_SETUP") != "1":
+        # A reboot kills this process, so this only runs once the run really
+        # finishes (or is interrupted); restore the machine either way.
+        finish_reboot(username=setup.username)
+        config._gui_reboot_finished = True
+    # Clean up passwordless sudoers rule if pytest.sh created one.
+    if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
+        try:
+            subprocess.run(
+                ["sudo", "-n", "python3", "-m", "harness.reboot", "cleanup"],
+                capture_output=True, text=True, timeout=10,
+            )
+        except Exception:
+            pass
 
 
 @pytest.fixture(scope="session")

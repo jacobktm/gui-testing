@@ -68,7 +68,6 @@ if $CLEAN_ONLY; then
 fi
 
 # --- Determine if reboot test setup is needed ---
-# Only when RUN_DESTRUCTIVE_TESTS=1 AND the system has switchable graphics.
 NEEDS_REBOOT_SETUP=false
 if [[ "${RUN_DESTRUCTIVE_TESTS:-}" == "1" ]]; then
     if system76-power graphics switchable 2>/dev/null | grep -qx "switchable"; then
@@ -76,21 +75,37 @@ if [[ "${RUN_DESTRUCTIVE_TESTS:-}" == "1" ]]; then
     fi
 fi
 
-# --- Privileged setup (prompts for sudo password before any tests run) ---
+# --- Privileged setup (passwordless sudo for harness.reboot commands) ---
+SUDOERS_FILE="/etc/sudoers.d/gui-testing"
+CREATED_SUDOERS=false
+
 if $NEEDS_REBOOT_SETUP; then
     echo ""
-    echo "Switchable graphics detected — setting up autologin for reboot tests."
-    echo "You may be prompted for your sudo password."
+    echo "Switchable graphics detected — setting up passwordless sudo for reboot tests."
+    echo "You will be prompted for your sudo password once."
     echo ""
-    sudo python3 -m harness.reboot enable
+
+    # Create sudoers rule (prompts for password)
+    SUDOERS_CONTENT="$USER ALL=(ALL) NOPASSWD: /usr/bin/python3 -m harness.reboot *"
+    echo "$SUDOERS_CONTENT" | sudo tee "$SUDOERS_FILE" > /dev/null
+    sudo chmod 0440 "$SUDOERS_FILE"
+    CREATED_SUDOERS=true
     export GUI_TESTING_SETUP_DONE=1
 
-    # Restore autologin config when pytest exits (covers non-reboot completion).
-    # Reboots will kill this process; the resumed run handles its own cleanup.
+    # Verify it works
+    if ! sudo -n python3 -m harness.reboot status > /dev/null 2>&1; then
+        echo "Warning: passwordless sudo verification failed. Reboot tests may not work." >&2
+    fi
+
+    # Enable autologin (now passwordless)
+    sudo -n python3 -m harness.reboot enable
+
+    # Cleanup function: restore autologin + remove sudoers rule
     cleanup() {
         echo ""
-        echo "Restoring autologin configuration..."
-        sudo python3 -m harness.reboot restore 2>/dev/null || true
+        echo "Cleaning up reboot test setup..."
+        sudo -n python3 -m harness.reboot restore 2>/dev/null || true
+        sudo -n python3 -m harness.reboot cleanup 2>/dev/null || true
     }
     trap cleanup EXIT
 fi

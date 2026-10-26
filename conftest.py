@@ -118,6 +118,23 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    # Pre-grant screenshot permission on COSMIC to avoid dialog during tests.
+    try:
+        subprocess.run(
+            [
+                "busctl", "--user", "call",
+                "org.freedesktop.impl.portal.PermissionStore",
+                "/org/freedesktop/impl/portal/PermissionStore",
+                "org.freedesktop.impl.portal.PermissionStore",
+                "SetPermission",
+                "sbssas", "screenshot", "true",
+                "com.system76.CosmicScreenshot", "screenshot", "1", "granted",
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+    except Exception:
+        pass
+
     # A rebooted run reuses the previous run directory so artifacts and the
     # per-item state survive across the reboot.
     config._gui_resume_dir = _requested_resume_dir(config)

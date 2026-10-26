@@ -48,6 +48,7 @@ __all__ = [
     "Screenshot",
     "ScreenshotError",
     "capture",
+    "grant_screenshot_permission",
     "crop_active_display",
     "crop_displays",
     "crop_to_monitor",
@@ -155,6 +156,31 @@ def resolve_screenshot_tool(tool: str | None = None) -> str:
     raise ScreenshotError(
         "no supported screenshot tool configured; run setup.sh or pass tool="
     )
+
+
+def grant_screenshot_permission() -> bool:
+    """Pre-grant screenshot permission on COSMIC (avoids dialog during tests).
+
+    Uses the xdg-desktop-portal permission store D-Bus interface.
+    Returns True if the permission was set successfully.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "busctl", "--user", "call",
+                "org.freedesktop.impl.portal.PermissionStore",
+                "/org/freedesktop/impl/portal/PermissionStore",
+                "org.freedesktop.impl.portal.PermissionStore",
+                "SetPermission",
+                "sbssas", "screenshot", "true",
+                "com.system76.CosmicScreenshot", "screenshot", "1", "granted",
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
 
 
 def capture(

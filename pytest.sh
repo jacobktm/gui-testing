@@ -77,6 +77,15 @@ if $CLEAN_ONLY; then
     exit 0
 fi
 
+# --- Pre-grant screenshot permission on COSMIC (avoids dialog during tests) ---
+if command -v cosmic-screenshot >/dev/null 2>&1; then
+    busctl --user call org.freedesktop.impl.portal.PermissionStore \
+        /org/freedesktop/impl/portal/PermissionStore \
+        org.freedesktop.impl.portal.PermissionStore SetPermission \
+        sbssas "screenshot" true "com.system76.CosmicScreenshot" "screenshot" 1 "granted" \
+        >/dev/null 2>&1 || true
+fi
+
 # --- Determine if reboot test setup is needed ---
 NEEDS_REBOOT_SETUP=false
 if [[ "${RUN_DESTRUCTIVE_TESTS:-}" == "1" ]]; then

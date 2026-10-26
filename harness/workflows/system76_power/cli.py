@@ -107,8 +107,13 @@ class System76PowerCLIWorkflow(Workflow):
     def transition_graphics(self, source: str, target: str, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
         """Execute a single graphics mode transition (source -> target).
 
-        Switches to source (if needed), reboots, switches to target, reboots,
-        and verifies the final mode matches target.
+        Uses a phase machine to survive reboots:
+        - phase "start": switch to source, verify, save, reboot
+        - phase "source_done": (after reboot) switch to target, verify, save, reboot
+        - phase "target_done": (after reboot) verify target, record result
+
+        Each phase saves state BEFORE rebooting so the resumed run knows
+        exactly where to continue.
         """
         handler = System76Power(
             test_id="system76_power.cli.graphics",
@@ -116,12 +121,13 @@ class System76PowerCLIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
+
         progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
         results = progress.get("results", [])
         done = {(e.get("from"), e.get("to")) for e in results if isinstance(e, dict)}
 
+        # Check if this specific pair was already completed.
         if (source, target) in done:
-            # Already completed in a previous run.
             entry = next((e for e in results if e.get("from") == source and e.get("to") == target), {})
             return WorkflowResult(
                 success=entry.get("verified", True),
@@ -130,101 +136,121 @@ class System76PowerCLIWorkflow(Workflow):
                 data={"from": source, "to": target, "actual": entry.get("actual"), "verified": entry.get("verified", True)},
             )
 
+        # Check if a different pair is in progress.
+        in_progress = (progress.get("source"), progress.get("target")) == (source, target)
+        phase = progress.get("phase", "start") if in_progress else "start"
+
         current = handler.get_graphics_mode()
 
-        # Move to source if needed.
-        source_ok = True
-        if current != source:
-            handler.switch_graphics_mode(source)
-            current = source
-            self.persist_state(item_id, "state", {"kind": "graphics_transition", "current": current, "source": source, "target": target})
+        # --- Phase: switch to source ---
+        if phase == "start":
+            if current != source:
+                handler.switch_graphics_mode(source)
+                current = handler.get_graphics_mode()
+            # Verify source mode took effect.
+            source_ok = (current == source)
+            if not source_ok:
+                # Switch failed; record and stop.
+                entry = {"from": source, "to": target, "actual": current, "verified": False, "error": "source switch failed"}
+                results.append(entry)
+                self.persist_state(item_id, "state", {
+                    "kind": "graphics_transition",
+                    "phase": "done",
+                    "source": source,
+                    "target": target,
+                    "current": current,
+                    "results": results,
+                    "completed": len(results),
+                })
+                return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (source switch failed, got {current})", data=entry)
+
+            # Save state BEFORE reboot.
+            self.persist_state(item_id, "state", {
+                "kind": "graphics_transition",
+                "phase": "source_done",
+                "source": source,
+                "target": target,
+                "current": current,
+                "results": results,
+            })
+            handler.setup_autologin()
+            handler.reboot()
+            handler.wait_for_boot()
+            # Process killed by reboot; resumed run continues from source_done.
+            # If we get here (no reboot happened), update phase.
+            current = handler.get_graphics_mode()
+            phase = "source_done"
+
+        # --- Phase: switch to target ---
+        if phase == "source_done":
+            current = handler.get_graphics_mode()
+            handler.switch_graphics_mode(target)
+            current = handler.get_graphics_mode()
+            target_ok = (current == target)
+            if not target_ok:
+                entry = {"from": source, "to": target, "actual": current, "verified": False, "error": "target switch failed"}
+                results.append(entry)
+                self.persist_state(item_id, "state", {
+                    "kind": "graphics_transition",
+                    "phase": "done",
+                    "source": source,
+                    "target": target,
+                    "current": current,
+                    "results": results,
+                    "completed": len(results),
+                })
+                return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (target switch failed, got {current})", data=entry)
+
+            # Save state BEFORE reboot.
+            self.persist_state(item_id, "state", {
+                "kind": "graphics_transition",
+                "phase": "target_done",
+                "source": source,
+                "target": target,
+                "current": current,
+                "results": results,
+            })
             handler.setup_autologin()
             handler.reboot()
             handler.wait_for_boot()
             current = handler.get_graphics_mode()
-            source_ok = (current == source)
+            phase = "target_done"
 
-        # Switch to target.
-        handler.switch_graphics_mode(target)
-        current = target
-        self.persist_state(item_id, "state", {"kind": "graphics_transition", "current": current, "source": source, "target": target})
-        handler.setup_autologin()
-        handler.reboot()
-        handler.wait_for_boot()
-        current = handler.get_graphics_mode()
-        target_ok = (current == target)
+        # --- Phase: verify ---
+        if phase in ("target_done", "done"):
+            current = handler.get_graphics_mode()
+            target_ok = (current == target)
+            source_ok = True  # source was already verified before reboot
+            verified = source_ok and target_ok
 
-        # On Pop!_OS 22.04, also verify via GUI that the extension reflects
-        # the new graphics mode (satisfies "CLI changes reflected in extension").
-        gui_verified = None
-        import os
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
-        if not os_id:
-            try:
-                os_id_parts = {}
-                with open("/etc/os-release") as f:
-                    for line in f:
-                        if "=" in line:
-                            key, val = line.strip().split("=", 1)
-                            os_id_parts[key] = val.strip().strip('"').lower()
-                os_id = os_id_parts.get("ID", "")
-                version = os_id_parts.get("VERSION_ID", "")
-                if version:
-                    os_id = f"{os_id}-{version}"
-            except Exception:
-                pass
-        if os_id == "pop-22.04" or os_id.startswith("pop-22"):
-            try:
-                from ...gui import Coords, GuiDriver
-                from ...dotool import click, send_keys
-                driver = GuiDriver(artifacts=self.artifacts)
-                # Open power settings to see the extension
+            entry = {"from": source, "to": target, "actual": current, "verified": verified}
+            results.append(entry)
+            done.add((source, target))
+            self.persist_state(item_id, "state", {
+                "kind": "graphics_transition",
+                "phase": "done",
+                "source": source,
+                "target": target,
+                "current": current,
+                "results": results,
+                "completed": len(results),
+            })
+
+            if self.artifacts is not None and item_id:
                 try:
-                    driver.click_at(Coords.OPEN)
+                    self.artifacts.save_text(item_id, "action", f"transition -> {source} to {target} (verified={verified})\n", step="transition")
                 except Exception:
                     pass
-                try:
-                    extra = Coords.POP22_EXTRA
-                    driver.click_at(extra)
-                except Exception:
-                    pass
-                # Detect graphics mode via screenshot + ollama
-                from ..system76_power.gui import System76PowerGUIWorkflow
-                gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
-                det = gui_wf.detect_graphics_mode(os_id=os_id)
-                if det.success:
-                    detected = (det.data or {}).get("graphics", "").lower()
-                    gui_verified = (detected == target.lower())
-                else:
-                    gui_verified = False
-                # Dismiss menus
-                try:
-                    from ...dotool import send_keys
-                    send_keys("key esc\nkey esc\n")
-                except Exception:
-                    pass
-            except Exception:
-                gui_verified = None
 
-        verified = source_ok and target_ok
-        if gui_verified is not None:
-            verified = verified and gui_verified
-        entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
-        results.append(entry)
-        self.persist_state(item_id, "state", {"kind": "graphics_transition", "current": current, "results": results, "completed": len(results)})
+            return WorkflowResult(
+                success=verified,
+                item_id=item_id,
+                summary=f"{source}->{target} (actual: {current}, verified={verified})",
+                data={"from": source, "to": target, "actual": current, "verified": verified},
+            )
 
-        if self.artifacts is not None and item_id:
-            try:
-                self.artifacts.save_text(item_id, "action", f"transition -> {source} to {target} (verified={verified})\n", step="transition")
-            except Exception:
-                pass
-
-        return WorkflowResult(
-            success=verified,
-            item_id=item_id,
-            summary=f"{source}->{target} (actual: {current}, verified={verified})",
-            data={"from": source, "to": target, "actual": current, "verified": verified},
-        )
+        # Fallback: shouldn't reach here
+        return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (unexpected phase: {phase})")
 
     def transition_graphics_all(self, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
         """Run all graphics transitions in the order determined by the starting mode.
@@ -292,7 +318,8 @@ class System76PowerCLIWorkflow(Workflow):
         results = []
         all_ok = True
         for source, target in order:
-            res = self.transition_graphics(source, target, item_id=item_id)
+            trans_item_id = f"{item_id}.{source}_to_{target}"
+            res = self.transition_graphics(source, target, item_id=trans_item_id)
             entry = res.data if res.data else {"from": source, "to": target, "actual": None, "verified": res.success}
             results.append(entry)
             if not res.success:

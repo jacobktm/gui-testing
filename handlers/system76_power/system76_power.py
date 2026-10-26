@@ -76,52 +76,67 @@ class System76Power:
             except Exception:
                 pass
 
-    def _run(self, cmd: list[str], check: bool = False, timeout: float | None = 120.0):
-        started = time.time()
-        try:
-            result = subprocess.run(
-                cmd,
-                check=check,
-                capture_output=True,
-                timeout=timeout,
-                start_new_session=True,
-                close_fds=True,
-            )
-            ended = time.time()
-            record = {
-                'command': cmd,
-                'returncode': result.returncode,
-                'stdout': result.stdout.decode(encoding='utf-8', errors='replace'),
-                'stderr': result.stderr.decode(encoding='utf-8', errors='replace'),
-                'duration': ended - started,
-            }
-            self._log({'type': 'command', **record})
-            return record
-        except subprocess.TimeoutExpired as e:
-            ended = time.time()
-            record = {
-                'command': cmd,
-                'returncode': None,
-                'stdout': e.stdout.decode(encoding='utf-8', errors='replace') if e.stdout else '',
-                'stderr': e.stderr.decode(encoding='utf-8', errors='replace') if e.stderr else '',
-                'duration': ended - started,
-                'timeout': timeout,
-            }
-            self._log({'type': 'command_timeout', **record})
-            raise
-        except subprocess.CalledProcessError as e:
-            ended = time.time()
-            record = {
-                'command': cmd,
-                'returncode': e.returncode,
-                'stdout': e.stdout.decode(encoding='utf-8', errors='replace') if e.stdout else '',
-                'stderr': e.stderr.decode(encoding='utf-8', errors='replace') if e.stderr else '',
-                'duration': ended - started,
-            }
-            self._log({'type': 'command_failed', **record})
-            if check:
-                raise
-            return record
+    def _run(self, cmd: list[str], check: bool = False, timeout: float | None = 120.0, retries: int = 2):
+        """Run a command with retry on timeout.
+
+        system76-power can occasionally hang (e.g. daemon busy applying
+        profile changes).  Retrying after a short delay usually succeeds.
+        """
+        last_exc = None
+        for attempt in range(retries + 1):
+            started = time.time()
+            try:
+                result = subprocess.run(
+                    cmd,
+                    check=check,
+                    capture_output=True,
+                    timeout=timeout,
+                    start_new_session=True,
+                    close_fds=True,
+                )
+                ended = time.time()
+                record = {
+                    'command': cmd,
+                    'returncode': result.returncode,
+                    'stdout': result.stdout.decode(encoding='utf-8', errors='replace'),
+                    'stderr': result.stderr.decode(encoding='utf-8', errors='replace'),
+                    'duration': ended - started,
+                    'attempt': attempt,
+                }
+                self._log({'type': 'command', **record})
+                return record
+            except subprocess.TimeoutExpired as e:
+                ended = time.time()
+                last_exc = e
+                record = {
+                    'command': cmd,
+                    'returncode': None,
+                    'stdout': e.stdout.decode(encoding='utf-8', errors='replace') if e.stdout else '',
+                    'stderr': e.stderr.decode(encoding='utf-8', errors='replace') if e.stderr else '',
+                    'duration': ended - started,
+                    'timeout': timeout,
+                    'attempt': attempt,
+                }
+                self._log({'type': 'command_timeout', **record})
+                if attempt < retries:
+                    # Wait before retrying; daemon may be busy.
+                    time.sleep(5 * (attempt + 1))
+            except subprocess.CalledProcessError as e:
+                ended = time.time()
+                record = {
+                    'command': cmd,
+                    'returncode': e.returncode,
+                    'stdout': e.stdout.decode(encoding='utf-8', errors='replace') if e.stdout else '',
+                    'stderr': e.stderr.decode(encoding='utf-8', errors='replace') if e.stderr else '',
+                    'duration': ended - started,
+                    'attempt': attempt,
+                }
+                self._log({'type': 'command_failed', **record})
+                if check:
+                    raise
+                return record
+        # All retries exhausted.
+        raise last_exc
 
     def switchable(self):
         result = self._run(['system76-power', 'graphics', 'switchable'], check=False, timeout=60.0)

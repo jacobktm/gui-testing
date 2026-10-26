@@ -9,10 +9,15 @@ class TestSystem76PowerCLIFull:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.query_profile()
         assert res.success, res.summary
-        res = wf.set_profile("balanced")
+        current = (res.data or {}).get("profile")
+        # Pick a different profile to ensure the set command actually changes state.
+        target = "performance" if current != "performance" else "balanced"
+        res = wf.set_profile(target)
         assert res.success, res.summary
+        assert (res.data or {}).get("profile") == target
         res = wf.query_profile()
         assert res.success, res.summary
+        assert (res.data or {}).get("profile") == target
 
     def test_laptop_switchable_graphics_can_be_queried(self, artifacts):
         wf = System76PowerCLIWorkflow(artifacts=artifacts)

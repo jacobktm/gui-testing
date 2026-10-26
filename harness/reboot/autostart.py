@@ -139,13 +139,38 @@ if [ ! -S "$XDG_RUNTIME_DIR/${{WAYLAND_DISPLAY:-wayland-0}}" ] && [ -z "${{DISPL
     exit 1
 fi
 
-# Try to open a terminal window to show progress (best-effort)
-for term in gnome-terminal konsole xfce4-terminal xterm kitty alacritty; do
-    if command -v "$term" >/dev/null 2>&1; then
-        "$term" -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
-        break
+# Try to open a terminal window to show progress (best-effort).
+# cosmic-term has no -e flag; fall through to notify-send + manual tail.
+if command -v gnome-terminal >/dev/null 2>&1; then
+    gnome-terminal -- bash -c "tail -f $LOG_FILE" >/dev/null 2>&1 &
+elif command -v konsole >/dev/null 2>&1; then
+    konsole -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
+elif command -v xfce4-terminal >/dev/null 2>&1; then
+    xfce4-terminal -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
+elif command -v xterm >/dev/null 2>&1; then
+    xterm -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
+elif command -v kitty >/dev/null 2>&1; then
+    kitty -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
+elif command -v alacritty >/dev/null 2>&1; then
+    alacritty -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
+fi
+
+# On COSMIC, cosmic-term has no -e flag; write a helper script the user
+# can run manually to watch progress.
+if command -v cosmic-term >/dev/null 2>&1; then
+    WRAPPER="$XDG_RUNTIME_DIR/gui-testing-watch.sh"
+    printf '#!/bin/sh\nexec tail -f %s\n' "$LOG_FILE" > "$WRAPPER"
+    chmod +x "$WRAPPER"
+fi
+
+# Also show a desktop notification with the log path (best-effort)
+if command -v notify-send >/dev/null 2>&1; then
+    if [ -f "${XDG_RUNTIME_DIR:-/tmp}/gui-testing-watch.sh" ]; then
+        notify-send "GUI Testing" "Resuming pytest run.\nWatch: sh ${XDG_RUNTIME_DIR:-/tmp}/gui-testing-watch.sh\nLog: $LOG_FILE" >/dev/null 2>&1 &
+    else
+        notify-send "GUI Testing" "Resuming pytest run.\nLog: $LOG_FILE" >/dev/null 2>&1 &
     fi
-done
+fi
 
 ATTEMPTS=$(cat {quoted_attempts} 2>/dev/null || echo 0)
 ATTEMPTS=$((ATTEMPTS + 1))

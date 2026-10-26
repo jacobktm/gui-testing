@@ -116,12 +116,28 @@ def _write_privileged(path: Path, text: str) -> bool:
         return True
     except (PermissionError, OSError):
         pass
-    # Need root: use sudo (prompts for password in interactive contexts).
+    # Need root: try passwordless sudo first (works in background),
+    # then fall back to interactive sudo (prompts in terminal).
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
-        subprocess.run(["sudo", "mkdir", "-p", str(path.parent)],
+        subprocess.run(["sudo", "-n", "mkdir", "-p", str(path.parent)],
                       stdout=subprocess.DEVNULL, stderr=None)
+    # Try passwordless first.
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", "tee", str(path)],
+            input=text,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # Fall back to interactive sudo.
     try:
         result = subprocess.run(
             ["sudo", "tee", str(path)],
@@ -144,6 +160,19 @@ def _remove_privileged(path: Path) -> bool:
         return True
     except (PermissionError, OSError):
         pass
+    # Try passwordless first.
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", "rm", "-f", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # Fall back to interactive.
     try:
         result = subprocess.run(
             ["sudo", "rm", "-f", str(path)],

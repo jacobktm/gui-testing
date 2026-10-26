@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# pytest.sh — Activate the venv and run pytest with optional cleanup.
+# pytest.sh — Activate the venv and run pytest.
 #
 # Usage:
-#   ./pytest.sh                          # run all tests
-#   ./pytest.sh tests/harness            # run a directory
+#   ./pytest.sh                                    # run all tests
+#   ./pytest.sh tests/harness                      # run a directory
 #   ./pytest.sh tests/harness/test_reboot_session.py  # run a file
-#   ./pytest.sh -k "reboot"              # pass any pytest args
-#   ./pytest.sh --clean                  # remove old artifact runs, then run all
-#   ./pytest.sh --clean-only             # remove old artifact runs and exit
+#   ./pytest.sh -k "reboot"                        # pass any pytest args
+#   ./pytest.sh --clean                            # remove old artifact runs, then run
+#   ./pytest.sh --clean-only                        # remove old artifact runs and exit
 #
 # Environment variables:
-#   RUN_DESTRUCTIVE_TESTS=1  # enable destructive/reboot tests
-#   GUI_TESTING_ARTIFACTS    # override artifacts root
+#   RUN_DESTRUCTIVE_TESTS=1   enable destructive/reboot tests
+#   GUI_TESTING_ARTIFACTS     override artifacts root directory
 
 set -euo pipefail
 
@@ -49,7 +49,6 @@ done
 if $CLEAN; then
     ARTIFACTS_ROOT="${GUI_TESTING_ARTIFACTS:-$SCRIPT_DIR/artifacts}"
     if [[ -d "$ARTIFACTS_ROOT" ]]; then
-        # Keep the 5 most recent run directories; remove the rest
         mapfile -t RUNS < <(ls -1dt "$ARTIFACTS_ROOT"/20* 2>/dev/null || true)
         if [[ ${#RUNS[@]} -gt 5 ]]; then
             echo "Cleaning old artifact runs (keeping 5 most recent)..."
@@ -66,6 +65,34 @@ fi
 if $CLEAN_ONLY; then
     echo "Cleanup complete."
     exit 0
+fi
+
+# --- Determine if reboot test setup is needed ---
+# Only when RUN_DESTRUCTIVE_TESTS=1 AND the system has switchable graphics.
+NEEDS_REBOOT_SETUP=false
+if [[ "${RUN_DESTRUCTIVE_TESTS:-}" == "1" ]]; then
+    if system76-power graphics switchable 2>/dev/null | grep -qx "switchable"; then
+        NEEDS_REBOOT_SETUP=true
+    fi
+fi
+
+# --- Privileged setup (prompts for sudo password before any tests run) ---
+if $NEEDS_REBOOT_SETUP; then
+    echo ""
+    echo "Switchable graphics detected — setting up autologin for reboot tests."
+    echo "You may be prompted for your sudo password."
+    echo ""
+    sudo python3 -m harness.reboot enable
+    export GUI_TESTING_SETUP_DONE=1
+
+    # Restore autologin config when pytest exits (covers non-reboot completion).
+    # Reboots will kill this process; the resumed run handles its own cleanup.
+    cleanup() {
+        echo ""
+        echo "Restoring autologin configuration..."
+        sudo python3 -m harness.reboot restore 2>/dev/null || true
+    }
+    trap cleanup EXIT
 fi
 
 # --- Activate venv and run pytest ---

@@ -183,6 +183,23 @@ def pytest_collection_finish(session):
     if config._gui_resume_requested or getattr(config, "_gui_resumed", False):
         config._gui_reboot_setup = None
         return
+    # If pytest.sh already did the privileged autologin setup, only install
+    # the resume unit here (no sudo needed).
+    if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
+        try:
+            from harness.reboot import install_resume_unit
+            plan = install_resume_unit(
+                run.run_dir,
+                pytest_args=list(sys.argv[1:]),
+                workdir=os.getcwd(),
+                python=sys.executable,
+            )
+            config._gui_reboot_setup = None
+            if not plan.installed:
+                config._gui_reboot_error = plan.reason
+        except Exception as error:
+            config._gui_reboot_error = f"{type(error).__name__}: {error}"
+        return
     try:
         config._gui_reboot_setup = prepare_reboot(
             run.run_dir,

@@ -565,7 +565,31 @@ class AutologinManager:
         return ok
 
 
-def restore_autologin(*, state_path: Path | str = AUTOLOGIN_STATE) -> bool:
-    """Module-level convenience wrapper around :meth:`AutologinManager.restore`."""
-    return AutologinManager(state_path=state_path).restore()
+def restore_autologin(*, state_path: Path | str | None = None) -> bool:
+    """Restore autologin config from any available state file.
+
+    Tries the default system path and the user-level path.
+    """
+    paths_to_try = []
+    if state_path is not None:
+        paths_to_try.append(Path(state_path))
+    paths_to_try.append(AUTOLOGIN_STATE)
+    paths_to_try.append(Path.home() / ".local" / "share" / "gui-testing" / "autologin.json")
+    seen = set()
+    unique = []
+    for p in paths_to_try:
+        if str(p) not in seen:
+            seen.add(str(p))
+            unique.append(p)
+
+    restored_any = False
+    found_any = False
+    for p in unique:
+        if p.exists():
+            found_any = True
+            if AutologinManager(state_path=p).restore():
+                restored_any = True
+    if not found_any:
+        return True
+    return restored_any
 

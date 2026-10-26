@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import pwd
 
 from .autostart import ResumePlan, install_resume_unit, remove_resume_unit
 from .resume import (
@@ -126,14 +127,48 @@ def prepare_reboot(
 
 
 def finish_reboot(*, username: str | None = None) -> bool:
-    """Remove the resume unit and restore the original autologin config."""
+    """Remove the resume unit and restore the original autologin config.
+
+    Tries multiple users and locations to ensure cleanup happens even if
+    the detected user is wrong (common on Pop!_OS GNOME/COSMIC).
+    """
     target = username or detect_gui_user()
-    unit_removed = remove_resume_unit(username=target)
+    # Try the detected user and the current user.
+    users_to_try = [target]
+    try:
+        current = pwd.getpwuid(os.getuid()).pw_name
+        if current not in users_to_try:
+            users_to_try.append(current)
+    except KeyError:
+        pass
+
+    unit_removed = False
+    for u in users_to_try:
+        if remove_resume_unit(username=u):
+            unit_removed = True
+
+    # Also try to find unit files in all home directories.
+    for home in Path("/home").iterdir():
+        if not home.is_dir():
+            continue
+        unit_file = home / ".config" / "systemd" / "user" / "gui-testing-resume.service"
+        if unit_file.exists():
+            try:
+                unit_file.unlink()
+                unit_removed = True
+            except OSError:
+                try:
+                    subprocess.run(
+                        ["sudo", "-n", "rm", "-f", str(unit_file)],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    unit_removed = True
+                except Exception:
+                    pass
+
     restored = restore_autologin()
     # Also try to clean up sudoers (best-effort).
     try:
-        from .autostart import _systemctl_user
-        import subprocess
         subprocess.run(
             ["sudo", "-n", "rm", "-f", "/etc/sudoers.d/gui-testing"],
             capture_output=True, text=True, timeout=10,

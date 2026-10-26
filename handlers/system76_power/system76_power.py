@@ -141,14 +141,16 @@ class System76Power:
         if not profile:
             current = self.get_perf_profile()
             if not current or current not in self.perf_profiles:
-                return
+                return False
             idx = self.perf_profiles.index(current)
             profile = self.perf_profiles[(idx + 1) % len(self.perf_profiles)]
         result = self._run(['system76-power', 'profile', profile], check=False)
         if result['returncode'] == 0:
             self._log({'type': 'perf_profile_switched', 'profile': profile})
+            return True
         else:
             self._log({'type': 'perf_profile_switch_failed', 'profile': profile, 'stderr': result.get('stderr')})
+            return False
 
     def get_perf_profile(self):
         result = self._run(['system76-power', 'profile'], check=False)
@@ -182,8 +184,10 @@ class System76Power:
         result = self._run(['system76-power', 'graphics', mode], check=False)
         if result['returncode'] == 0:
             self._log({'type': 'graphics_mode_switched', 'mode': mode})
+            return True
         else:
             self._log({'type': 'graphics_mode_switch_failed', 'mode': mode, 'stderr': result.get('stderr')})
+            return False
 
     def get_graphics_power(self):
         result = self._run(['system76-power', 'graphics', 'power'], check=False)

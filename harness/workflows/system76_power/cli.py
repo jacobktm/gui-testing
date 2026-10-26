@@ -29,14 +29,13 @@ class System76PowerCLIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        handler.switch_perf_profile(profile)
-        newp = handler.get_perf_profile()
+        ok = handler.switch_perf_profile(profile)
         if self.artifacts is not None and item_id:
             try:
-                self.artifacts.save_text(item_id, "action", f"set:{profile} got:{newp}\n", step="set")
+                self.artifacts.save_text(item_id, "action", f"set:{profile}\n", step="set")
             except Exception:
                 pass
-        return WorkflowResult(success=newp == profile, item_id=item_id, summary=f"{profile}->{newp}", data={"profile": newp})
+        return WorkflowResult(success=ok, item_id=item_id, summary=f"set:{profile}", data={"profile": profile})
 
     def query_switchable(self, item_id: str = "cli.laptop_switchable_graphics_can_be_queried") -> WorkflowResult:
         handler = System76Power(

@@ -12,13 +12,11 @@ endless reboot loop if a test keeps failing.
 
 from __future__ import annotations
 
-import grp
 import os
 import pwd
 import shlex
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -105,6 +103,7 @@ fi
 set -u
 
 export GUI_TESTING_RESUME_RUN={quoted_run_dir}
+export GUI_TESTING_RESUMED=1
 export RUN_DESTRUCTIVE_TESTS=1
 export GUI_TESTING_AUTOSTART=1
 
@@ -160,26 +159,19 @@ exit "$status"
 
 def _systemctl_user(args: list[str], username: str | None = None) -> subprocess.CompletedProcess[str] | None:
     try:
-        if username and os.getuid() == 0 and username != pwd.getpwuid(0).pw_name:
-            entry = pwd.getpwnam(username)
-            environment = {
-                "XDG_RUNTIME_DIR": f"/run/user/{entry.pw_uid}",
-                "DBUS_SESSION_BUS_ADDRESS": f"unix:path=/run/user/{entry.pw_uid}/bus",
-            }
-            command = [
-                "sudo",
-                "-u",
-                username,
-                "env",
-                *[f"{key}={value}" for key, value in environment.items()],
-                "systemctl",
-                "--user",
-                *args,
-            ]
-        else:
-            command = ["systemctl", "--user", *args]
-        return subprocess.run(command, capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.SubprocessError, KeyError):
+        env = os.environ.copy()
+        if username:
+            try:
+                entry = pwd.getpwnam(username)
+                env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{entry.pw_uid}")
+                env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{entry.pw_uid}/bus")
+            except KeyError:
+                pass
+        return subprocess.run(
+            ["systemctl", "--user", *args],
+            capture_output=True, text=True, timeout=20, env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
         return None
 
 
@@ -189,47 +181,8 @@ def _write_as_user(path: Path, text: str, username: str | None, *, mode: int = 0
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
         path.chmod(mode)
-        if username and os.getuid() == 0:
-            entry = pwd.getpwnam(username)
-            group = grp.getgrgid(entry.pw_gid).gr_name
-            subprocess.run(
-                ["chown", f"{username}:{group}", str(path)],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
         return True
     except (OSError, KeyError):
-        pass
-
-    if not username or os.getuid() != 0:
-        return False
-    try:
-        entry = pwd.getpwnam(username)
-        group = grp.getgrgid(entry.pw_gid).gr_name
-        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as temporary:
-            temporary.write(text)
-            temporary_path = temporary.name
-        subprocess.run(["mkdir", "-p", str(path.parent)], capture_output=True, timeout=15)
-        completed = subprocess.run(
-            [
-                "install",
-                "-o",
-                username,
-                "-g",
-                group,
-                "-m",
-                f"{mode:o}",
-                temporary_path,
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        os.unlink(temporary_path)
-        return completed.returncode == 0
-    except (OSError, subprocess.SubprocessError, KeyError):
         return False
 
 

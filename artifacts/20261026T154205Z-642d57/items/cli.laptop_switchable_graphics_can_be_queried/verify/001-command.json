@@ -1,0 +1,16 @@
+{
+  "handler": "system76_power",
+  "timestamp": "2026-10-26T15:42:05.384247Z",
+  "test_id": "system76_power.cli.switchable",
+  "item_id": "cli.laptop_switchable_graphics_can_be_queried",
+  "phase": "verify",
+  "type": "command",
+  "command": [
+    "system76-power",
+    "profile"
+  ],
+  "returncode": 0,
+  "stdout": "Power Profile: Balanced\nCPU: 16% - 100%, Turbo\nBacklight acpi_video0: 5/19 = 26%\nKeyboard Backlight system76_acpi::kbd_backlight: 0/255 = 0%\n",
+  "stderr": "",
+  "duration": 0.0027565956115722656
+}

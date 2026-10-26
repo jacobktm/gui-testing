@@ -36,7 +36,6 @@ __all__ = [
     "detect_display_manager",
     "detect_gui_user",
     "detect_session",
-    "handover_run_dir",
     "render_cosmic_autologin",
     "render_gdm_autologin",
     "render_lightdm_autologin",
@@ -115,13 +114,26 @@ def _write_privileged(path: Path, text: str) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
         return True
-    except OSError:
+    except (PermissionError, OSError):
         pass
-    completed = _run(["sudo", "-n", "mkdir", "-p", str(path.parent)])
-    if completed is None or completed.returncode != 0:
+    # Need root: use sudo (prompts for password in interactive contexts).
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        subprocess.run(["sudo", "mkdir", "-p", str(path.parent)],
+                      stdout=subprocess.DEVNULL, stderr=None)
+    try:
+        result = subprocess.run(
+            ["sudo", "tee", str(path)],
+            input=text,
+            stdout=subprocess.DEVNULL,
+            stderr=None,
+            text=True,
+            timeout=120,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
         return False
-    completed = _run(["sudo", "-n", "tee", str(path)], input_text=text)
-    return completed is not None and completed.returncode == 0
 
 
 def _remove_privileged(path: Path) -> bool:
@@ -130,10 +142,18 @@ def _remove_privileged(path: Path) -> bool:
         return True
     except FileNotFoundError:
         return True
-    except OSError:
+    except (PermissionError, OSError):
         pass
-    completed = _run(["sudo", "-n", "rm", "-f", str(path)])
-    return completed is not None and completed.returncode == 0
+    try:
+        result = subprocess.run(
+            ["sudo", "rm", "-f", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=None,
+            timeout=60,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -283,10 +303,6 @@ def detect_gui_user(*, environ: Mapping[str, str] | None = None) -> str:
     owner = _runtime_socket_owner()
     if owner and owner != "root":
         return owner
-
-    sudo_user = env.get("SUDO_USER")
-    if sudo_user and sudo_user != "root":
-        return sudo_user
 
     user = env.get("USER")
     if user and user != "root":
@@ -553,29 +569,3 @@ def restore_autologin(*, state_path: Path | str = AUTOLOGIN_STATE) -> bool:
     """Module-level convenience wrapper around :meth:`AutologinManager.restore`."""
     return AutologinManager(state_path=state_path).restore()
 
-
-def handover_run_dir(run_dir: Path | str, username: str | None = None) -> bool:
-    """Give the GUI user ownership of ``run_dir``.
-
-    Only meaningful when the test process runs as root (for example via
-    ``sudo``) while the resumed run starts inside the user session.  Without
-    this the resumed process could not append to the manifest or the resume
-    bookkeeping.  Returns ``True`` when ownership was changed.
-    """
-    if os.geteuid() != 0:
-        return False
-    user = username or detect_gui_user()
-    if not user or user == "root":
-        return False
-    try:
-        entry = pwd.getpwnam(user)
-        group = grp.getgrgid(entry.pw_gid).gr_name
-    except KeyError:
-        return False
-    run_dir = Path(run_dir)
-    paths = [run_dir, *run_dir.rglob("*")]
-    ok = True
-    for path in paths:
-        completed = _run(["chown", f"{user}:{group}", str(path)])
-        ok = ok and completed is not None and completed.returncode == 0
-    return ok

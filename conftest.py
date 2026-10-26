@@ -121,6 +121,8 @@ def pytest_configure(config):
     # per-item state survive across the reboot.
     config._gui_resume_dir = _requested_resume_dir(config)
     config._gui_resume_requested = config._gui_resume_dir is not None
+    # Track whether this is a resumed (background) run.
+    config._gui_resumed = os.environ.get("GUI_TESTING_RESUMED") == "1"
     config._gui_reboot_items = []
     config._gui_reboot_setup = None
     config._gui_reboot_error = None
@@ -172,10 +174,15 @@ def pytest_collection_finish(session):
     if getattr(config.option, "collectonly", False):
         return
     will_reboot = bool(config._gui_reboot_items)
-    if not will_reboot and not config._gui_resume_requested:
+    if not will_reboot and not config._gui_resume_requested and not getattr(config, "_gui_resumed", False):
         return
 
     run = _ensure_run(config)
+    # On a resumed run the autologin config and resume unit are already in
+    # place from the initial run, so skip the (privileged) setup step.
+    if config._gui_resume_requested or getattr(config, "_gui_resumed", False):
+        config._gui_reboot_setup = None
+        return
     try:
         config._gui_reboot_setup = prepare_reboot(
             run.run_dir,

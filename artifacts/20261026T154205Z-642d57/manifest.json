@@ -1,0 +1,225 @@
+{
+  "run_id": "20261026T154205Z-642d57",
+  "created": "2026-10-26T15:42:05.360995Z",
+  "status": "unknown",
+  "summary": {},
+  "metadata": {
+    "cwd": "/home/system76/testing",
+    "argv": [
+      "/home/system76/testing/.venv/bin/pytest",
+      "-q"
+    ],
+    "env": {
+      "XDG_SESSION_TYPE": "wayland",
+      "XDG_CURRENT_DESKTOP": "COSMIC",
+      "WAYLAND_DISPLAY": "wayland-1",
+      "DISPLAY": ":1"
+    }
+  },
+  "tests": [
+    {
+      "id": "cli.power_profiles_can_be_queried_and_set",
+      "status": "passed",
+      "summary": "",
+      "metadata": {},
+      "evidence": [
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/verify/001-command.json",
+          "kind": "detection",
+          "phase": "verify",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.364305Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/verify/002-command.json",
+          "kind": "detection",
+          "phase": "verify",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.366956Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/verify/003-query.txt",
+          "kind": "text",
+          "phase": "verify",
+          "step": "query",
+          "created": "2026-10-26T15:42:05.367362Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/action/001-command.json",
+          "kind": "detection",
+          "phase": "action",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.369365Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/action/002-perf_profile_nochange.json",
+          "kind": "detection",
+          "phase": "action",
+          "step": "perf_profile_nochange",
+          "created": "2026-10-26T15:42:05.369619Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/action/003-command.json",
+          "kind": "detection",
+          "phase": "action",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.372654Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/action/004-set.txt",
+          "kind": "text",
+          "phase": "action",
+          "step": "set",
+          "created": "2026-10-26T15:42:05.373258Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/verify/004-command.json",
+          "kind": "detection",
+          "phase": "verify",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.376340Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/verify/005-command.json",
+          "kind": "detection",
+          "phase": "verify",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.379278Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.power_profiles_can_be_queried_and_set",
+          "path": "items/cli.power_profiles_can_be_queried_and_set/verify/006-query.txt",
+          "kind": "text",
+          "phase": "verify",
+          "step": "query",
+          "created": "2026-10-26T15:42:05.380106Z",
+          "source": null,
+          "metadata": {}
+        }
+      ]
+    },
+    {
+      "id": "cli.laptop_switchable_graphics_can_be_queried",
+      "status": "passed",
+      "summary": "",
+      "metadata": {},
+      "evidence": [
+        {
+          "item": "cli.laptop_switchable_graphics_can_be_queried",
+          "path": "items/cli.laptop_switchable_graphics_can_be_queried/verify/001-command.json",
+          "kind": "detection",
+          "phase": "verify",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.384840Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.laptop_switchable_graphics_can_be_queried",
+          "path": "items/cli.laptop_switchable_graphics_can_be_queried/verify/002-command.json",
+          "kind": "detection",
+          "phase": "verify",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.388812Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.laptop_switchable_graphics_can_be_queried",
+          "path": "items/cli.laptop_switchable_graphics_can_be_queried/verify/003-query.txt",
+          "kind": "text",
+          "phase": "verify",
+          "step": "query",
+          "created": "2026-10-26T15:42:05.390651Z",
+          "source": null,
+          "metadata": {}
+        }
+      ]
+    },
+    {
+      "id": "cli.graphics_power",
+      "status": "unknown",
+      "summary": "",
+      "metadata": {},
+      "evidence": [
+        {
+          "item": "cli.graphics_power",
+          "path": "items/cli.graphics_power/verify/001-command.json",
+          "kind": "detection",
+          "phase": "verify",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.399120Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.graphics_power",
+          "path": "items/cli.graphics_power/verify/002-command.json",
+          "kind": "detection",
+          "phase": "verify",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.404132Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.graphics_power",
+          "path": "items/cli.graphics_power/verify/003-query.txt",
+          "kind": "text",
+          "phase": "verify",
+          "step": "query",
+          "created": "2026-10-26T15:42:05.406833Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.graphics_power",
+          "path": "items/cli.graphics_power/action/001-command.json",
+          "kind": "detection",
+          "phase": "action",
+          "step": "command",
+          "created": "2026-10-26T15:42:05.413648Z",
+          "source": null,
+          "metadata": {}
+        },
+        {
+          "item": "cli.graphics_power",
+          "path": "items/cli.graphics_power/action/002-command_timeout.json",
+          "kind": "detection",
+          "phase": "action",
+          "step": "command_timeout",
+          "created": "2026-10-26T15:42:35.516434Z",
+          "source": null,
+          "metadata": {}
+        }
+      ]
+    }
+  ]
+}

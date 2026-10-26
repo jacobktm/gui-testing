@@ -241,15 +241,6 @@ class System76Power:
             self._log({'type': 'graphics_power_set_failed', 'state': state, 'stderr': result.get('stderr')})
 
     def reboot(self) -> bool:
-        # If pytest runs as root, make sure the run directory is writable by
-        # the GUI user that will resume the run after the reboot.
-        if self.artifacts is not None:
-            try:
-                from harness.reboot import handover_run_dir
-
-                handover_run_dir(self.artifacts.run_dir)
-            except Exception:
-                pass
         result = self._run(['systemctl', 'reboot'], check=False)
         return result.get('returncode') in (0, None)
 

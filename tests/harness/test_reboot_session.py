@@ -84,13 +84,6 @@ def test_gui_user_falls_back_to_socket_owner(monkeypatch):
     assert session.detect_gui_user(environ={"USER": "root"}) == "carol"
 
 
-def test_gui_user_falls_back_to_sudo_user(monkeypatch):
-    monkeypatch.setattr(session, "_logind_sessions", lambda: [])
-    monkeypatch.setattr(session, "_runtime_socket_owner", lambda: None)
-
-    assert session.detect_gui_user(environ={"SUDO_USER": "alice", "USER": "root"}) == "alice"
-
-
 def test_build_pytest_args_strips_resume_option():
     args = ["tests/", "-q", "--resume-run", "/tmp/run", "--resume-run=/tmp/other"]
     assert autostart.build_pytest_args(args) == ["tests/", "-q"]
@@ -125,11 +118,6 @@ def test_resume_state_roundtrip(tmp_path: Path):
     assert state.next_attempt(limit=2) is True
     assert state.next_attempt(limit=2) is True
     assert state.next_attempt(limit=2) is False
-
-
-def test_handover_is_noop_for_non_root(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(session.os, "geteuid", lambda: 1000)
-    assert session.handover_run_dir(tmp_path) is False
 
 
 def test_enable_refuses_unreadable_config(tmp_path: Path, monkeypatch):

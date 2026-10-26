@@ -39,7 +39,6 @@ from .session import (
     detect_display_manager,
     detect_gui_user,
     detect_session,
-    handover_run_dir,
     render_cosmic_autologin,
     render_gdm_autologin,
     render_lightdm_autologin,
@@ -60,7 +59,6 @@ __all__ = [
     "detect_gui_user",
     "detect_session",
     "finish_reboot",
-    "handover_run_dir",
     "install_resume_unit",
     "load_completed",
     "prepare_reboot",
@@ -124,9 +122,6 @@ def prepare_reboot(
         workdir=workdir,
         python=python,
     )
-    # When pytest runs as root, the resumed process runs in the GUI session as
-    # the desktop user; hand the run directory over so it stays writable.
-    handover_run_dir(run_dir, session.username)
     return RebootSetup(session=session, autologin=autologin, resume=resume)
 
 

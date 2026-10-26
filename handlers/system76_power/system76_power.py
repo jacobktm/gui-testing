@@ -28,13 +28,7 @@ class System76Power:
         self.artifacts = artifacts
         self.log_path = self._resolve_log_path(log_dir, log_path)
 
-        self.performance = None
-        self.graphics = None
-        self._graphics_loaded = False
-
-    def _ensure_graphics(self):
-        """No-op: graphics state is always fetched directly from the CLI."""
-        pass
+        # State is never cached: every get/set calls system76-power directly.
 
     def _resolve_log_path(self, log_dir: str | Path | None, log_path: str | Path | None) -> Path | None:
         if log_path is not None:
@@ -145,16 +139,13 @@ class System76Power:
 
     def switch_perf_profile(self, profile=None):
         if not profile:
-            if not self.performance:
-                self.performance = self.get_perf_profile()
-            if not self.performance or self.performance not in self.perf_profiles:
+            current = self.get_perf_profile()
+            if not current or current not in self.perf_profiles:
                 return
-            idx = self.perf_profiles.index(self.performance)
+            idx = self.perf_profiles.index(current)
             profile = self.perf_profiles[(idx + 1) % len(self.perf_profiles)]
-        # Always call the CLI directly; do not short-circuit on cached state.
         result = self._run(['system76-power', 'profile', profile], check=False)
         if result['returncode'] == 0:
-            self.performance = profile
             self._log({'type': 'perf_profile_switched', 'profile': profile})
         else:
             self._log({'type': 'perf_profile_switch_failed', 'profile': profile, 'stderr': result.get('stderr')})
@@ -165,36 +156,31 @@ class System76Power:
             try:
                 output = result['stdout'].split('\n')[0]
                 if ': ' in output:
-                    self.performance = output.split(': ')[1].strip().lower()
+                    return output.split(': ')[1].strip().lower()
                 elif output.strip():
-                    self.performance = output.strip().lower()
+                    return output.strip().lower()
             except Exception:
                 pass
-        return self.performance
+        return None
 
     def get_graphics_mode(self):
-        self._ensure_graphics()
         result = self._run(['system76-power', 'graphics'], check=False)
         if result['returncode'] == 0 and result['stdout'].strip():
             try:
-                self.graphics = result['stdout'].split('\n')[0].strip()
+                return result['stdout'].split('\n')[0].strip()
             except Exception:
                 pass
-        return self.graphics
+        return None
 
     def switch_graphics_mode(self, mode=None):
-        self._ensure_graphics()
         if not mode:
-            if not self.graphics:
-                self.graphics = self.get_graphics_mode()
-            if not self.graphics or self.graphics not in self.graphics_modes:
+            current = self.get_graphics_mode()
+            if not current or current not in self.graphics_modes:
                 return
-            idx = self.graphics_modes.index(self.graphics)
+            idx = self.graphics_modes.index(current)
             mode = self.graphics_modes[(idx + 1) % len(self.graphics_modes)]
-        # Always call the CLI directly; do not short-circuit on cached state.
         result = self._run(['system76-power', 'graphics', mode], check=False)
         if result['returncode'] == 0:
-            self.graphics = mode
             self._log({'type': 'graphics_mode_switched', 'mode': mode})
         else:
             self._log({'type': 'graphics_mode_switch_failed', 'mode': mode, 'stderr': result.get('stderr')})
@@ -203,17 +189,16 @@ class System76Power:
         result = self._run(['system76-power', 'graphics', 'power'], check=False)
         if result['returncode'] == 0 and result['stdout'].strip():
             try:
-                self.graphics_power = result['stdout'].strip().lower()
+                return result['stdout'].strip().lower()
             except Exception:
                 pass
-        return getattr(self, 'graphics_power', None)
+        return None
 
     def set_graphics_power(self, state=None):
         if state not in ('on', 'off'):
             return
         result = self._run(['system76-power', 'graphics', 'power', state], check=False)
         if result['returncode'] == 0:
-            self.graphics_power = state
             self._log({'type': 'graphics_power_set', 'state': state})
         else:
             self._log({'type': 'graphics_power_set_failed', 'state': state, 'stderr': result.get('stderr')})

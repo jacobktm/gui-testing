@@ -12,6 +12,22 @@ def _os_id():
 
 @pytest.mark.gui
 class TestSystem76PowerGUI:
+    def test_screenshot_permission(self, artifacts):
+        """Trigger screenshot permission dialog early (COSMIC)."""
+        import os
+        from pathlib import Path
+        from harness.screenshots.screenshot import capture
+
+        out_dir = Path("/tmp/opencode/screenshot_perm")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        shot_path = out_dir / "permission_test.png"
+        if shot_path.exists():
+            shot_path.unlink()
+        try:
+            capture(shot_path)
+        except Exception:
+            pass  # Permission dialog may block; that's expected on first run
+
     def test_open_power_settings(self, artifacts):
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         res = wf.open_power_settings(_os_id())

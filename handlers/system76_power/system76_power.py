@@ -168,6 +168,7 @@ class System76Power:
 
     def switchable(self):
         result = self._run(['system76-power', 'graphics', 'switchable'], check=False, timeout=60.0)
+        print(f"  [switchable] rc={result.get('returncode')} stdout={result.get('stdout', '').strip()!r} stderr={result.get('stderr', '').strip()!r}", flush=True)
         stdout = (result.get('stdout') or '').strip()
         stderr = (result.get('stderr') or '').strip()
         if stdout:
@@ -219,11 +220,16 @@ class System76Power:
 
     def get_graphics_mode(self):
         result = self._run(['system76-power', 'graphics'], check=False, timeout=120.0)
-        if result['returncode'] == 0 and result['stdout'].strip():
+        raw = (result.get('stdout') or '').strip()
+        rc = result.get('returncode')
+        print(f"  [get_graphics_mode] rc={rc} raw={raw!r}", flush=True)
+        if rc == 0 and raw:
             try:
-                return result['stdout'].split('\n')[0].strip()
-            except Exception:
-                pass
+                mode = raw.split('\n')[0].strip()
+                print(f"  [get_graphics_mode] parsed mode={mode!r}", flush=True)
+                return mode
+            except Exception as e:
+                print(f"  [get_graphics_mode] parse error: {e}", flush=True)
         return None
 
     def switch_graphics_mode(self, mode=None):
@@ -234,6 +240,10 @@ class System76Power:
             idx = self.graphics_modes.index(current)
             mode = self.graphics_modes[(idx + 1) % len(self.graphics_modes)]
         result = self._run(['system76-power', 'graphics', mode], check=False, timeout=300.0)
+        raw_out = (result.get('stdout') or '').strip()
+        raw_err = (result.get('stderr') or '').strip()
+        rc = result.get('returncode')
+        print(f"  [switch_graphics_mode({mode})] rc={rc} stdout={raw_out!r} stderr={raw_err!r}", flush=True)
         time.sleep(1)
         if result['returncode'] == 0:
             self._log({'type': 'graphics_mode_switched', 'mode': mode})

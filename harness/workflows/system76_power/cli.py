@@ -121,7 +121,7 @@ class System76PowerCLIWorkflow(Workflow):
             "source": current,
             "target": "integrated",
             "current": current,
-            "results": [{"from": source if 'source' in dir() else current, "to": "integrated", "actual": current, "verified": verified}],
+            "results": [{"from": current, "to": "integrated", "actual": current, "verified": verified}],
             "completed": 1,
         })
 

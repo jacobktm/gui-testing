@@ -139,6 +139,14 @@ if [ ! -S "$XDG_RUNTIME_DIR/${{WAYLAND_DISPLAY:-wayland-0}}" ] && [ -z "${{DISPL
     exit 1
 fi
 
+# Try to open a terminal window to show progress (best-effort)
+for term in gnome-terminal konsole xfce4-terminal xterm kitty alacritty; do
+    if command -v "$term" >/dev/null 2>&1; then
+        "$term" -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
+        break
+    fi
+done
+
 ATTEMPTS=$(cat {quoted_attempts} 2>/dev/null || echo 0)
 ATTEMPTS=$((ATTEMPTS + 1))
 echo "$ATTEMPTS" > {quoted_attempts}
@@ -148,9 +156,12 @@ if [ "$ATTEMPTS" -gt {max_attempts} ]; then
     exit 1
 fi
 
+LOG_FILE={quoted_run_dir}/resume/pytest-output.log
 cd {quoted_workdir}
-{command} --resume-run {quoted_run_dir}
-status=$?
+echo "=== Resuming pytest run: {quoted_run_dir} ===" | tee "$LOG_FILE"
+echo "Started at: $(date)" | tee -a "$LOG_FILE"
+{command} --resume-run {quoted_run_dir} 2>&1 | tee -a "$LOG_FILE"
+status=${{PIPESTATUS[0]}}
 # One parameter set per reboot: do not start again on the next boot.
 systemctl --user disable {UNIT_NAME} >/dev/null 2>&1 || true
 exit "$status"

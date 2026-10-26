@@ -252,14 +252,22 @@ class System76Power:
 
     def wait_for_boot(self, timeout: float = 600.0) -> bool:
         deadline = time.time() + timeout
+        elapsed = 0
+        print("Waiting for system to boot...", flush=True)
         while time.time() < deadline:
             try:
                 state = self._run(['systemctl', 'is-system-running'], check=False)
-                if state.get('returncode') == 0 and (state.get('stdout') or '').strip():
+                status = (state.get('stdout') or '').strip() if state else ''
+                if state.get('returncode') == 0 and status:
+                    print(f"  System is {status} (after {elapsed}s)", flush=True)
                     return True
+                if status:
+                    print(f"  ... {status} ({elapsed}s)", flush=True, end='\r')
             except Exception:
                 pass
             time.sleep(5)
+            elapsed += 5
+        print(f"  Timed out after {timeout}s", flush=True)
         return False
 
     def setup_autologin(self, username: str | None = None) -> bool:

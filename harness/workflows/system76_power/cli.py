@@ -89,7 +89,9 @@ class System76PowerCLIWorkflow(Workflow):
 
         modes = list(handler.graphics_modes)
         current = handler.get_graphics_mode()
+        print(f"Detected starting graphics mode: {current!r} (modes: {modes})", flush=True)
         if current not in modes:
+            print(f"  Warning: {current!r} not in modes list, falling back to {modes[0]!r}", flush=True)
             current = modes[0]
 
         # Start with all transitions originating from the current mode,
@@ -281,6 +283,9 @@ class System76PowerCLIWorkflow(Workflow):
             return WorkflowResult(success=True, item_id=item_id, summary="no graphics modes", data={"skipped": True})
 
         order = self.get_transition_order(item_id=item_id)
+        print(f"Transition order ({len(order)} pairs):", flush=True)
+        for src, tgt in order:
+            print(f"  {src} -> {tgt}", flush=True)
         if not order:
             return WorkflowResult(success=True, item_id=item_id, summary="no transitions", data={"skipped": True})
 

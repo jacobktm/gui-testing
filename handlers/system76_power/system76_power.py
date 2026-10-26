@@ -348,12 +348,21 @@ class System76Power:
         Delegates to :mod:`harness.reboot.session`, which knows both the GNOME
         (gdm) and COSMIC (cosmic-greeter/greetd) configuration formats and
         restores the previous setup when the run finishes.
+
+        Skips if pytest.sh already set up autologin (GUI_TESTING_SETUP_DONE=1).
+        Uses passwordless sudo only (never blocks on password prompt).
         """
+        if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
+            print("  [setup_autologin] already done by pytest.sh, skipping", flush=True)
+            return True
         try:
             from harness.reboot import AutologinManager
 
-            return AutologinManager().enable(username=username).enabled
-        except Exception:
+            result = AutologinManager().enable(username=username)
+            print(f"  [setup_autologin] enabled={result.enabled} reason={result.reason}", flush=True)
+            return result.enabled
+        except Exception as e:
+            print(f"  [setup_autologin] exception: {e}", flush=True)
             return False
 
 

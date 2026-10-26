@@ -132,7 +132,7 @@ def _write_privileged(path: Path, text: str) -> bool:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             text=True,
-            timeout=30,
+            timeout=10,
         )
         if result.returncode == 0:
             return True

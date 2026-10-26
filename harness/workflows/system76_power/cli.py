@@ -240,11 +240,13 @@ class System76PowerCLIWorkflow(Workflow):
         phase = progress.get("phase", "start") if in_progress else "start"
 
         current = handler.get_graphics_mode()
+        print(f"  transition {source}->{target}: current mode = {current!r}", flush=True)
 
         # --- Phase: start — record source, switch to target, save, reboot ---
         if phase == "start":
             # Log the current mode (source) for reporting.
             actual_source = current if current else source
+            print(f"  switching to {target}...", flush=True)
             # Switch to target.
             result = handler._run(['system76-power', 'graphics', target], check=False)
             logged_output = (result.get('stdout') or '').strip()
@@ -278,10 +280,12 @@ class System76PowerCLIWorkflow(Workflow):
             # If we survive (no reboot happened), continue.
             current = handler.get_graphics_mode()
             phase = "rebooting"
+            print(f"  after reboot: mode = {current!r} (target={target!r})", flush=True)
 
         # --- Phase: rebooting — (after reboot) verify target, record result ---
         if phase in ("rebooting", "done"):
             current = handler.get_graphics_mode()
+            print(f"  verify: current={current!r} target={target!r} match={current == target}", flush=True)
             target_ok = (current == target)
 
             # On Pop!_OS 22.04, also verify via GUI that the extension reflects

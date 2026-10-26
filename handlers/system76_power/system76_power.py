@@ -30,8 +30,9 @@ class System76Power:
 
         self.performance = None
         self.graphics = None
+        self._graphics_loaded = False
 
-        # Initialize state while logging
+        # Initialize performance profile state while logging
         profile_result = self._run(['system76-power', 'profile'])
         if profile_result["returncode"] == 0:
             try:
@@ -43,6 +44,11 @@ class System76Power:
             except Exception:
                 pass
 
+    def _ensure_graphics(self):
+        """Lazy-load graphics mode (avoids slow GPU probe in profile-only tests)."""
+        if self._graphics_loaded:
+            return
+        self._graphics_loaded = True
         graphics_result = self._run(['system76-power', 'graphics'], check=False)
         if graphics_result["returncode"] == 0 and graphics_result["stdout"].strip():
             try:
@@ -95,7 +101,7 @@ class System76Power:
             except Exception:
                 pass
 
-    def _run(self, cmd: list[str], check: bool = False, timeout: float | None = None):
+    def _run(self, cmd: list[str], check: bool = False, timeout: float | None = 30.0):
         started = time.time()
         try:
             result = subprocess.run(cmd, check=check, capture_output=True, timeout=timeout)
@@ -187,6 +193,9 @@ class System76Power:
         return self.performance
 
     def get_graphics_mode(self):
+        self._ensure_graphics()
+        if self.graphics is not None:
+            return self.graphics
         result = self._run(['system76-power', 'graphics'], check=False)
         if result['returncode'] == 0 and result['stdout'].strip():
             try:
@@ -196,6 +205,7 @@ class System76Power:
         return self.graphics
 
     def switch_graphics_mode(self, mode=None):
+        self._ensure_graphics()
         if not mode:
             if not self.graphics or self.graphics not in self.graphics_modes:
                 return

@@ -7,6 +7,7 @@ from handlers.system76_power import System76Power
 
 
 @pytest.mark.gnome
+@pytest.mark.cosmic
 class TestGNOMEBrightness:
     def test_brightness_balanced_max(self, artifacts):
         b = BrightnessHandler()
@@ -69,3 +70,32 @@ class TestGNOMEBrightness:
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.check_brightness_after_reboot()
         assert res.success, res.summary
+
+
+    def test_brightness_daemon_restart(self, artifacts):
+        """Daemon restart: brightness should not change when daemon defaults to balanced.
+
+Applies to both GNOME and COSMIC desktops.
+"""
+        b = BrightnessHandler()
+        s = System76Power(artifacts=artifacts)
+        max_b = b.maximum()
+        if max_b is None:
+            pytest.skip("no backlight")
+        b.brightness_up_to_max()
+        before = b.current()
+        assert before is not None
+        ok = s.restart_daemon()
+        if not ok:
+            pytest.skip("could not restart daemon (sudo required)")
+        # Give daemon a moment to settle
+        import time
+        time.sleep(2)
+        after = b.current()
+        if artifacts:
+            try:
+                artifacts.save_text("gnome.brightness_daemon_restart", "verify", f"before={before} after={after}/{max_b}\n", step="check")
+            except Exception:
+                pass
+        assert after is not None
+        assert abs(after - before) <= max(1, max_b // 20)

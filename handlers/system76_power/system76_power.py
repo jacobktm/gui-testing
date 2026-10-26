@@ -207,6 +207,14 @@ class System76Power:
         else:
             self._log({'type': 'graphics_power_set_failed', 'state': state, 'stderr': result.get('stderr')})
 
+    def restart_daemon(self) -> bool:
+        """Restart the system76-power daemon (requires sudo)."""
+        result = self._run(
+            ["sudo", "systemctl", "restart", "com.system76.PowerDaemon.service"],
+            check=False,
+        )
+        return result.get("returncode") == 0
+
     def reboot(self) -> bool:
         result = self._run(['systemctl', 'reboot'], check=False)
         return result.get('returncode') in (0, None)

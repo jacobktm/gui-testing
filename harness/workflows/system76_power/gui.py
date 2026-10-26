@@ -172,6 +172,8 @@ class System76PowerGUIWorkflow(Workflow):
 
         # Switch to integrated via GUI
         self.set_graphics_mode_gui("integrated", os_id=os_id, item_id=item_id)
+        import time
+        time.sleep(2)
         self.dismiss_menus()
         handler.setup_autologin()
         handler.reboot()
@@ -207,7 +209,9 @@ class System76PowerGUIWorkflow(Workflow):
 
         # Switch to target via GUI
         self.set_graphics_mode_gui(target, os_id=os_id, item_id=item_id)
-        # Dismiss any pop-up/notification that appears after switching.
+        # Wait for pop-up/notification to appear, then dismiss.
+        import time
+        time.sleep(2)
         self.dismiss_menus()
         handler.setup_autologin()
         handler.reboot()

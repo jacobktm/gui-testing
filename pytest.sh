@@ -2,9 +2,10 @@
 # pytest.sh — Activate the venv and run pytest.
 #
 # Usage:
-#   ./pytest.sh                                    # run all tests
+#   ./pytest.sh                                    # run all tests (verbose)
+#   ./pytest.sh system76-power                     # resolves to tests/system76-power/
+#   ./pytest.sh system76-power/test_cli_full.py    # resolves to tests/system76-power/test_cli_full.py
 #   ./pytest.sh tests/harness                      # run a directory
-#   ./pytest.sh tests/harness/test_reboot_session.py  # run a file
 #   ./pytest.sh -k "reboot"                        # pass any pytest args
 #   ./pytest.sh --clean                            # remove old artifact runs, then run
 #   ./pytest.sh --clean-only                        # remove old artifact runs and exit
@@ -40,7 +41,13 @@ for arg in "$@"; do
             CLEAN_ONLY=true
             ;;
         *)
-            PYTEST_ARGS+=("$arg")
+            # Resolve shorthand: if arg doesn't exist as a path but
+            # tests/<arg> does, use that.
+            if [[ ! -e "$arg" && -e "tests/$arg" ]]; then
+                PYTEST_ARGS+=("tests/$arg")
+            else
+                PYTEST_ARGS+=("$arg")
+            fi
             ;;
     esac
 done
@@ -86,7 +93,7 @@ if $NEEDS_REBOOT_SETUP; then
     echo ""
 
     # Create sudoers rule (prompts for password)
-    SUDOERS_CONTENT="$USER ALL=(ALL) NOPASSWD: /usr/bin/python3 -m harness.reboot *, /usr/bin/systemctl restart com.system76.PowerDaemon.service"
+    SUDOERS_CONTENT="$USER ALL=(ALL) NOPASSWD: /usr/bin/python3 -m harness.reboot *"
     echo "$SUDOERS_CONTENT" | sudo tee "$SUDOERS_FILE" > /dev/null
     sudo chmod 0440 "$SUDOERS_FILE"
     CREATED_SUDOERS=true
@@ -115,9 +122,9 @@ fi
 source "$VENV_DIR/bin/activate"
 
 if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
-    echo "Running all tests..."
-    exec pytest
+    echo "Running all tests (verbose)..."
+    exec pytest -vv
 else
-    echo "Running: pytest ${PYTEST_ARGS[*]}"
-    exec pytest "${PYTEST_ARGS[@]}"
+    echo "Running: pytest -vv ${PYTEST_ARGS[*]}"
+    exec pytest -vv "${PYTEST_ARGS[@]}"
 fi

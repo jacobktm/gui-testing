@@ -87,25 +87,6 @@ class System76PowerCLIWorkflow(Workflow):
         if switchable != "switchable":
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
-        import os
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
-        if not os_id:
-            try:
-                os_id_parts = {}
-                with open("/etc/os-release") as f:
-                    for line in f:
-                        if "=" in line:
-                            key, val = line.strip().split("=", 1)
-                            os_id_parts[key] = val.strip().strip('"').lower()
-                os_id = os_id_parts.get("ID", "")
-                version = os_id_parts.get("VERSION_ID", "")
-                if version:
-                    os_id = f"{os_id}-{version}"
-            except Exception:
-                pass
-        if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26") or "ubuntu" in os_id:
-            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
-
         current = handler.get_graphics_mode()
         print(f"transition_to_integrated: current mode = {current!r}", flush=True)
 
@@ -252,25 +233,6 @@ class System76PowerCLIWorkflow(Workflow):
         switchable = handler.switchable()
         if switchable != "switchable":
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
-
-        import os
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
-        if not os_id:
-            try:
-                os_id_parts = {}
-                with open("/etc/os-release") as f:
-                    for line in f:
-                        if "=" in line:
-                            key, val = line.strip().split("=", 1)
-                            os_id_parts[key] = val.strip().strip('"').lower()
-                os_id = os_id_parts.get("ID", "")
-                version = os_id_parts.get("VERSION_ID", "")
-                if version:
-                    os_id = f"{os_id}-{version}"
-            except Exception:
-                pass
-        if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26") or "ubuntu" in os_id:
-            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
 
         progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
         results = progress.get("results", [])
@@ -435,31 +397,6 @@ class System76PowerCLIWorkflow(Workflow):
                 except Exception:
                     pass
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
-
-        # Graphics modes are not present on Ubuntu or COSMIC desktops.
-        import os
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
-        if not os_id:
-            try:
-                os_id_parts = {}
-                with open("/etc/os-release") as f:
-                    for line in f:
-                        if "=" in line:
-                            key, val = line.strip().split("=", 1)
-                            os_id_parts[key] = val.strip().strip('"').lower()
-                os_id = os_id_parts.get("ID", "")
-                version = os_id_parts.get("VERSION_ID", "")
-                if version:
-                    os_id = f"{os_id}-{version}"
-            except Exception:
-                pass
-        if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26") or "ubuntu" in os_id:
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.record_item(item_id, status="skipped")
-                except Exception:
-                    pass
-            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
 
         modes = list(handler.graphics_modes)
         if not modes or handler.get_graphics_mode() is None:

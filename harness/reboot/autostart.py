@@ -107,6 +107,9 @@ export GUI_TESTING_RESUMED=1
 export RUN_DESTRUCTIVE_TESTS=1
 export GUI_TESTING_AUTOSTART=1
 
+LOG_FILE={quoted_run_dir}/resume/pytest-output.log
+mkdir -p {quoted_run_dir}/resume
+
 if [ -z "${{XDG_RUNTIME_DIR:-}}" ]; then
     XDG_RUNTIME_DIR="/run/user/$(id -u)"
     export XDG_RUNTIME_DIR
@@ -140,21 +143,21 @@ if [ ! -S "$XDG_RUNTIME_DIR/${{WAYLAND_DISPLAY:-wayland-0}}" ] && [ -z "${{DISPL
 fi
 
 # Try to open a terminal window to show progress (best-effort).
-# cosmic-term uses -- to separate its args from the command to run.
-if command -v cosmic-term >/dev/null 2>&1; then
-    cosmic-term -- sh -c "tail -f $LOG_FILE" >/dev/null 2>&1 &
-elif command -v gnome-terminal >/dev/null 2>&1; then
-    gnome-terminal -- bash -c "tail -f $LOG_FILE" >/dev/null 2>&1 &
-elif command -v konsole >/dev/null 2>&1; then
-    konsole -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
-elif command -v xfce4-terminal >/dev/null 2>&1; then
-    xfce4-terminal -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
-elif command -v xterm >/dev/null 2>&1; then
-    xterm -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
-elif command -v kitty >/dev/null 2>&1; then
-    kitty -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
-elif command -v alacritty >/dev/null 2>&1; then
-    alacritty -e "tail -f $LOG_FILE" >/dev/null 2>&1 &
+# Use a .desktop file + gtk-launch, which works on all DEs including COSMIC.
+DESKTOP_FILE="$HOME/.local/share/applications/gui-testing-watch.desktop"
+mkdir -p "$HOME/.local/share/applications"
+cat > "$DESKTOP_FILE" << DESKTOP_EOF
+[Desktop Entry]
+Type=Application
+Name=GUI Test Progress
+Exec=sh -c "tail -f $LOG_FILE"
+Terminal=true
+DESKTOP_EOF
+update-desktop-database "$HOME/.local/share/applications/" >/dev/null 2>&1
+if command -v gtk-launch >/dev/null 2>&1; then
+    gtk-launch gui-testing-watch >/dev/null 2>&1 &
+elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$DESKTOP_FILE" >/dev/null 2>&1 &
 fi
 
 # Also show a desktop notification with the log path (best-effort)
@@ -171,7 +174,6 @@ if [ "$ATTEMPTS" -gt {max_attempts} ]; then
     exit 1
 fi
 
-LOG_FILE={quoted_run_dir}/resume/pytest-output.log
 cd {quoted_workdir}
 echo "=== Resuming pytest run: {quoted_run_dir} ===" | tee "$LOG_FILE"
 echo "Started at: $(date)" | tee -a "$LOG_FILE"
@@ -246,6 +248,8 @@ PartOf=graphical-session.target
 
 [Service]
 Type=oneshot
+Environment="XDG_RUNTIME_DIR=/run/user/%U"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
 ExecStart=/bin/sh {script_path}
 TimeoutStartSec=infinity
 

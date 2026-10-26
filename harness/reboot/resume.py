@@ -5,7 +5,7 @@ A reboot kills the pytest process.  The next boot starts pytest again (see
 tests already ran and which ones still need to.  Completion records live next
 to the run artifacts, which survive the reboot::
 
-    <run-dir>/resume/completed.json   # {"completed": ["tests/...::test_x", ...]}
+    <run-dir>/resume/completed.json   # {"completed": {"nodeid": "passed", ...}}
     <run-dir>/resume/attempts         # incremented by the resume wrapper
 
 The logic is intentionally package-agnostic: any test suite can use it.
@@ -36,31 +36,38 @@ def _completed_path(run_dir: Path | str) -> Path:
     return resume_dir(run_dir) / "completed.json"
 
 
-def load_completed(run_dir: Path | str) -> set[str]:
-    """Return the node ids already completed in ``run_dir``."""
+def load_completed(run_dir: Path | str) -> dict[str, str]:
+    """Return a mapping of node id -> outcome for completed tests.
+
+    Backwards-compatible: old format stored a list of node ids, which is
+    converted to {nodeid: "passed"}.
+    """
     path = _completed_path(run_dir)
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return set()
+        return {}
     values = loaded.get("completed") if isinstance(loaded, dict) else None
-    if not isinstance(values, list):
-        return set()
-    return {str(value) for value in values}
+    if isinstance(values, list):
+        # Old format: list of node ids → assume passed.
+        return {str(v): "passed" for v in values}
+    if isinstance(values, dict):
+        return {str(k): str(v) for k, v in values.items()}
+    return {}
 
 
-def record_completed(run_dir: Path | str, nodeid: str) -> None:
-    """Record ``nodeid`` as completed, atomically and immediately.
+def record_completed(run_dir: Path | str, nodeid: str, outcome: str = "passed") -> None:
+    """Record ``nodeid`` as completed with the given outcome.
 
     The record is flushed on every call so a reboot in the middle of the run
     cannot lose progress.
     """
     path = _completed_path(run_dir)
     completed = load_completed(run_dir)
-    if nodeid in completed:
+    if nodeid in completed and completed[nodeid] == outcome:
         return
-    completed.add(nodeid)
-    payload = json.dumps({"completed": sorted(completed)}, indent=2) + "\n"
+    completed[nodeid] = outcome
+    payload = json.dumps({"completed": completed}, indent=2) + "\n"
     temporary = path.with_name(f"{path.name}.tmp")
     temporary.write_text(payload, encoding="utf-8")
     os.replace(temporary, path)
@@ -84,11 +91,11 @@ class ResumeState:
     def __init__(self, run_dir: Path | str) -> None:
         self.run_dir = Path(run_dir)
 
-    def completed(self) -> set[str]:
+    def completed(self) -> dict[str, str]:
         return load_completed(self.run_dir)
 
-    def mark(self, nodeid: str) -> None:
-        record_completed(self.run_dir, nodeid)
+    def mark(self, nodeid: str, outcome: str = "passed") -> None:
+        record_completed(self.run_dir, nodeid, outcome)
 
     def next_attempt(self, *, limit: int = 10) -> bool:
         return bump_attempts(self.run_dir, limit=limit)

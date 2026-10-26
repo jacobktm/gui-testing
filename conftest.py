@@ -143,13 +143,15 @@ def pytest_collection_modifyitems(config, items):
             marker = program.replace("-", "_")
             item.add_marker(getattr(pytest.mark, marker))
 
-    # Tests completed before the reboot are skipped in the resumed session.
+    # Tests completed before the reboot are tracked for outcome override.
+    # They are skipped during execution but their result is overridden to
+    # passed/failed in pytest_runtest_makereport.
     if config._gui_resume_dir is not None:
         completed = load_completed(config._gui_resume_dir)
-        already_done = pytest.mark.skip(reason="completed before the last reboot")
         for item in items:
             if item.nodeid in completed:
-                item.add_marker(already_done)
+                item._completed_outcome = completed[item.nodeid]
+                item.add_marker(pytest.mark.skip(reason=f"completed before reboot ({completed[item.nodeid]})"))
 
     # Avoid running destructive/state-changing tests by default on a dev box.
     if os.environ.get("RUN_DESTRUCTIVE_TESTS", "1") != "1":
@@ -259,15 +261,25 @@ def artifacts(pytestconfig):
 def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
-    if report.when != "call" or not report.passed:
-        return
-    run_dir = getattr(item.config, "_gui_resume_dir", None)
-    if run_dir is None:
-        return
-    try:
-        record_completed(run_dir, item.nodeid)
-    except Exception:
-        pass
+
+    # Override outcome for tests completed in a previous run.
+    stored_outcome = getattr(item, "_completed_outcome", None)
+    if stored_outcome is not None and report.when == "setup" and report.outcome == "skipped":
+        if stored_outcome == "passed":
+            report.outcome = "passed"
+        else:
+            report.outcome = "failed"
+            if not report.longrepr:
+                report.longrepr = "Failed in previous run before reboot"
+
+    # Record completed tests with their actual outcome.
+    if report.when == "call" and report.outcome in ("passed", "failed"):
+        run_dir = getattr(item.config, "_gui_resume_dir", None)
+        if run_dir is not None:
+            try:
+                record_completed(run_dir, item.nodeid, outcome=report.outcome)
+            except Exception:
+                pass
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):

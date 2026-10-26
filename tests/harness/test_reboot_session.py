@@ -114,7 +114,7 @@ def test_resume_state_roundtrip(tmp_path: Path):
     state.mark("tests/a.py::test_two")
     state.mark("tests/a.py::test_one")
 
-    assert state.completed() == {"tests/a.py::test_one", "tests/a.py::test_two"}
+    assert state.completed() == {"tests/a.py::test_one": "passed", "tests/a.py::test_two": "passed"}
     assert state.next_attempt(limit=2) is True
     assert state.next_attempt(limit=2) is True
     assert state.next_attempt(limit=2) is False

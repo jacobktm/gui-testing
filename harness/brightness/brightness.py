@@ -237,6 +237,7 @@ class BrightnessHandler:
             return False
         target = max(0, min(target, max_b))
 
+        tolerance = max(1, max_b // 20) if max_b else 1
         proc = subprocess.Popen(["dotool"], stdin=subprocess.PIPE, text=True)
         try:
             presses = 0
@@ -244,7 +245,8 @@ class BrightnessHandler:
                 current = self.current()
                 if current is None:
                     break
-                if current == target:
+                # Stop when within tolerance (EC backlights have coarse steps).
+                if abs(current - target) <= tolerance:
                     break
                 if current < target:
                     proc.stdin.write("key brightnessup\n")

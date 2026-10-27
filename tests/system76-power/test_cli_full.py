@@ -224,6 +224,18 @@ class TestSystem76PowerCLIFull:
             return  # not 22.04 or no GUI verification data
         assert res.success, res.summary
 
+    def test_transition_to_performance(self, artifacts):
+        """Ensure starting from performance profile (known starting point)."""
+        from handlers.system76_power import System76Power
+        handler = System76Power(artifacts=artifacts)
+        current = handler.get_perf_profile()
+        if current == "performance":
+            return
+        handler.switch_perf_profile("performance")
+        import time
+        time.sleep(1)
+        assert handler.get_perf_profile() == "performance"
+
     def test_cli_profile_performance_to_balanced(self, artifacts):
         """Switch to balanced via CLI, verify GUI reflects it."""
         from harness.workflows import System76PowerCLIWorkflow

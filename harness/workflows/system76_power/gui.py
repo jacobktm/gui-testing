@@ -83,10 +83,14 @@ class System76PowerGUIWorkflow(Workflow):
             else:
                 coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
             if coords:
+                import sys
+                print(f"[set_power_profile_gui] clicking profile {profile} at {coords}", file=sys.stderr, flush=True)
                 # Click the profile coordinate twice to ensure registration.
                 self.driver.click_at(coords)
+                print(f"[set_power_profile_gui] first click done", file=sys.stderr, flush=True)
                 time.sleep(1)
                 self.driver.click_at(coords)
+                print(f"[set_power_profile_gui] second click done", file=sys.stderr, flush=True)
                 time.sleep(1)
             # Dismiss any pop-up/notification.
             self.dismiss_menus()

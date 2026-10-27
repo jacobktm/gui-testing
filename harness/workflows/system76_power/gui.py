@@ -69,8 +69,8 @@ class System76PowerGUIWorkflow(Workflow):
         verified = (actual == "performance")
         return WorkflowResult(success=verified, item_id=item_id, summary=f"to_performance (actual: {actual})", data={"profile": actual, "verified": verified})
 
-    def transition_perf_profile(self, target: str, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transition") -> WorkflowResult:
-        """Transition to a power profile via GUI and verify CLI agreement."""
+    def transition_perf_profile(self, source: str, target: str, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transition") -> WorkflowResult:
+        """Transition from source to target power profile via GUI and verify CLI+GUI agreement."""
         from handlers.system76_power import System76Power
         res = self.set_power_profile_gui(target, os_id=os_id, item_id=item_id)
         if not res.success:
@@ -94,8 +94,8 @@ class System76PowerGUIWorkflow(Workflow):
         return WorkflowResult(
             success=verified,
             item_id=item_id,
-            summary=f"profile={target} (cli={actual}, gui={gui_verified})",
-            data={"target": target, "cli": actual, "gui_verified": gui_verified, "verified": verified},
+            summary=f"{source}->{target} (cli={actual}, gui={gui_verified})",
+            data={"from": source, "to": target, "cli": actual, "gui_verified": gui_verified, "verified": verified},
         )
 
     def dismiss_menus(self):

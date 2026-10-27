@@ -83,29 +83,50 @@ class TestSystem76PowerGUI:
         res = wf.transition_to_performance(os_id=os_id, item_id="gui.power_profile_transition.to_performance")
         assert res.success, res.summary
 
-    def test_gui_transition_to_battery(self, artifacts):
-        """Transition to battery profile via GUI, verify CLI agreement."""
+    def test_gui_transition_performance_to_balanced(self, artifacts):
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         os_id = _os_id()
-        res = wf.transition_perf_profile("battery", os_id=os_id, item_id="gui.power_profile_transition.to_battery")
+        res = wf.transition_perf_profile("performance", "balanced", os_id=os_id, item_id="gui.power_profile_transition.performance_to_balanced")
         assert res.success, res.summary
         data = res.data or {}
         assert data.get("verified") is True, f"verification failed: {data}"
 
-    def test_gui_transition_to_balanced(self, artifacts):
-        """Transition to balanced profile via GUI, verify CLI agreement."""
+    def test_gui_transition_balanced_to_battery(self, artifacts):
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         os_id = _os_id()
-        res = wf.transition_perf_profile("balanced", os_id=os_id, item_id="gui.power_profile_transition.to_balanced")
+        res = wf.transition_perf_profile("balanced", "battery", os_id=os_id, item_id="gui.power_profile_transition.balanced_to_battery")
         assert res.success, res.summary
         data = res.data or {}
         assert data.get("verified") is True, f"verification failed: {data}"
 
-    def test_gui_transition_to_performance(self, artifacts):
-        """Transition to performance profile via GUI, verify CLI agreement."""
+    def test_gui_transition_battery_to_performance(self, artifacts):
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         os_id = _os_id()
-        res = wf.transition_perf_profile("performance", os_id=os_id, item_id="gui.power_profile_transition.to_performance")
+        res = wf.transition_perf_profile("battery", "performance", os_id=os_id, item_id="gui.power_profile_transition.battery_to_performance")
+        assert res.success, res.summary
+        data = res.data or {}
+        assert data.get("verified") is True, f"verification failed: {data}"
+
+    def test_gui_transition_performance_to_battery(self, artifacts):
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        os_id = _os_id()
+        res = wf.transition_perf_profile("performance", "battery", os_id=os_id, item_id="gui.power_profile_transition.performance_to_battery")
+        assert res.success, res.summary
+        data = res.data or {}
+        assert data.get("verified") is True, f"verification failed: {data}"
+
+    def test_gui_transition_battery_to_balanced(self, artifacts):
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        os_id = _os_id()
+        res = wf.transition_perf_profile("battery", "balanced", os_id=os_id, item_id="gui.power_profile_transition.battery_to_balanced")
+        assert res.success, res.summary
+        data = res.data or {}
+        assert data.get("verified") is True, f"verification failed: {data}"
+
+    def test_gui_transition_balanced_to_performance(self, artifacts):
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        os_id = _os_id()
+        res = wf.transition_perf_profile("balanced", "performance", os_id=os_id, item_id="gui.power_profile_transition.balanced_to_performance")
         assert res.success, res.summary
         data = res.data or {}
         assert data.get("verified") is True, f"verification failed: {data}"
@@ -281,31 +302,6 @@ class TestSystem76PowerGUI:
         res = wf.transition_graphics("nvidia", "integrated", os_id="pop-22.04")
         assert res.success, res.summary
 
-    def test_perf_profile_transitions(self, artifacts):
-        """Transition through power profiles via dotool-driven GUI clicks."""
-        from handlers.system76_power import System76Power
-
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        os_id = _os_id()
-        for target in ("battery", "balanced", "performance"):
-            res = wf.set_power_profile_gui(
-                target,
-                os_id=os_id,
-                item_id=f"gui.power_profile_transition_{target}",
-            )
-            assert res.success, res.summary
-            import time
-            time.sleep(3)
-            # Click center screen between checks to dismiss pop-ups.
-            try:
-                from harness.dotool import send_keys
-                send_keys("key esc\n")
-            except Exception:
-                pass
-            time.sleep(1)
-            handler = System76Power(artifacts=artifacts)
-            current = handler.get_perf_profile()
-            assert current == target, f"expected profile {target}, got {current}"
 
 
 

@@ -64,12 +64,47 @@ def get_backlight() -> Optional[Path]:
     return max(candidates, key=score)
 
 
-def get_brightness(backlight: Optional[Path] = None) -> Optional[int]:
-    """Read the current brightness value from sysfs.
+def _parse_system76_power_brightness() -> tuple[Optional[int], Optional[int]]:
+    """Parse brightness from ``system76-power profile`` output.
 
-    Prefers ``actual_brightness`` (reflects real hardware state) over
-    ``brightness`` (which may be a pending value).
+    Returns (current, max) or (None, None) if parsing fails.
+    Output format: "Backlight <device>: <current>/<max> = <percent>%"
     """
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["system76-power", "profile"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return None, None
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.lower().startswith("backlight "):
+                # "Backlight acpi_video0: 5/19 = 26%"
+                # or "Backlight nvidia_wmi_ec_backlight: 255/255 = 100%"
+                if ":" in line:
+                    after_colon = line.split(":", 1)[1].strip()
+                    # "5/19 = 26%"
+                    parts = after_colon.split()
+                    if parts and "/" in parts[0]:
+                        frac = parts[0]  # "5/19"
+                        cur_str, max_str = frac.split("/", 1)
+                        return int(cur_str), int(max_str)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return None, None
+
+
+def get_brightness(backlight: Optional[Path] = None) -> Optional[int]:
+    """Read the current brightness value.
+
+    Tries ``system76-power profile`` first (works on all systems),
+    falls back to sysfs ``actual_brightness`` / ``brightness``.
+    """
+    cur, _ = _parse_system76_power_brightness()
+    if cur is not None:
+        return cur
     bl = backlight or get_backlight()
     if bl is None:
         return None
@@ -79,6 +114,24 @@ def get_brightness(backlight: Optional[Path] = None) -> Optional[int]:
         except (OSError, ValueError):
             continue
     return None
+
+
+def get_max_brightness(backlight: Optional[Path] = None) -> Optional[int]:
+    """Read the maximum brightness value.
+
+    Tries ``system76-power profile`` first (works on all systems),
+    falls back to sysfs ``max_brightness``.
+    """
+    _, mx = _parse_system76_power_brightness()
+    if mx is not None:
+        return mx
+    bl = backlight or get_backlight()
+    if bl is None:
+        return None
+    try:
+        return int((bl / "max_brightness").read_text().strip())
+    except (OSError, ValueError):
+        return None
 
 
 def get_max_brightness(backlight: Optional[Path] = None) -> Optional[int]:

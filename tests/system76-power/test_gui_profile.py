@@ -32,7 +32,7 @@ class TestSystem76PowerGUI:
         time.sleep(3)
         try:
             from harness.dotool import send_keys
-            send_keys("key return")
+            send_keys("key enter")
         except Exception:
             pass
         time.sleep(2)

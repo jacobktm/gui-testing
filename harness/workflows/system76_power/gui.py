@@ -71,7 +71,7 @@ class System76PowerGUIWorkflow(Workflow):
         try:
             self.open_power_settings(os_id)
             import time
-            time.sleep(1)
+            time.sleep(3)
             if os_id == "pop-22.04":
                 coords = Coords.POP22_PROFILES.get(profile)
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
@@ -460,6 +460,13 @@ class System76PowerGUIWorkflow(Workflow):
                 "'battery', 'balanced', or 'performance'."
             )
 
+        # Open power settings first so the panel is visible.
+        try:
+            self.open_power_settings(os_id)
+        except Exception:
+            pass
+        import time
+        time.sleep(2)
         # Dismiss any lingering pop-ups before capturing.
         try:
             self.dismiss_menus()
@@ -467,7 +474,6 @@ class System76PowerGUIWorkflow(Workflow):
             self.driver.click_at((0.5, 0.5))
         except Exception:
             pass
-        import time
         time.sleep(1)
         try:
             value, result = self.driver.capture_and_detect(

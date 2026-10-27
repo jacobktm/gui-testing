@@ -468,8 +468,9 @@ class System76PowerCLIWorkflow(Workflow):
     def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:
         """Verify screen brightness is preserved across a system reboot."""
         import sys
+        import time
         from pathlib import Path
-        from harness.brightness import get_brightness, BrightnessHandler
+        from harness.brightness import get_brightness, get_max_brightness
 
         handler = System76Power(
             test_id="system76_power.cli.brightness_restart",
@@ -478,20 +479,22 @@ class System76PowerCLIWorkflow(Workflow):
             artifacts=self.artifacts,
         )
 
-        # Helper to print to stderr (visible even with pytest capture).
         def log(msg):
             print(msg, file=sys.stderr, flush=True)
 
-        marker = Path("/tmp/gui-testing-brightness-reboot-marker")
         progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
-
         has_saved_before = isinstance(progress, dict) and progress.get("before") is not None
-        phase = progress.get("phase", "before")
-        already_rebooted = has_saved_before or (not marker.exists() and bool(progress))
+        before_saved = progress.get("before") if has_saved_before else None
 
-        log(f"[brightness_reboot] item_id={item_id} phase={phase} has_saved_before={has_saved_before} already_rebooted={already_rebooted}")
+        # Record boot_id before reboot (for verification).
+        try:
+            boot_id_before = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        except Exception:
+            boot_id_before = None
 
-        if not has_saved_before and not already_rebooted:
+        log(f"[brightness_reboot] has_saved_before={has_saved_before} before_saved={before_saved} progress={progress}")
+
+        if not has_saved_before:
             # First invocation: save brightness and reboot.
             before = get_brightness()
             log(f"[brightness_reboot] first invocation, brightness={before}")
@@ -509,56 +512,76 @@ class System76PowerCLIWorkflow(Workflow):
                 return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
             self.persist_state(
                 item_id, "state",
-                {"kind": "brightness_restart", "before": before, "phase": "after"},
+                {"kind": "brightness_restart", "before": before, "phase": "after", "boot_id_before": boot_id_before},
             )
             if self.artifacts is not None and item_id:
                 try:
                     self.artifacts.save_text(item_id, "setup", "brightness_before=" + str(before) + "\n", step="before_reboot")
                 except Exception as e:
                     log(f"[brightness_reboot] save_text failed: {e}")
+            # Write marker (supplementary, may not survive reboot).
             try:
-                marker.write_text(str(before), encoding="utf-8")
+                Path("/tmp/gui-testing-brightness-reboot-marker").write_text(str(before), encoding="utf-8")
             except Exception:
                 pass
             handler.setup_autologin()
+            log("[brightness_reboot] rebooting now")
             handler.reboot()
             handler.wait_for_boot()
+            # If we survived (no reboot), that's a problem.
+            try:
+                boot_id_after = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+                if boot_id_before is not None and boot_id_after == boot_id_before:
+                    log("[brightness_reboot] WARNING: boot_id unchanged, reboot may not have happened")
+            except Exception:
+                pass
             return WorkflowResult(success=True, item_id=item_id, summary="saved=" + str(before) + ", rebooting")
 
         # Resumed invocation: compare brightness.
-        before = progress.get("before")
+        before = before_saved
         if before is None:
             try:
-                before = int(marker.read_text().strip()) if marker.exists() else None
+                before = int(Path("/tmp/gui-testing-brightness-reboot-marker").read_text().strip())
             except Exception:
                 pass
-        import time
-        time.sleep(3)
+        log(f"[brightness_reboot] resumed: before={before}")
+        time.sleep(5)
         after = get_brightness()
-        log(f"[brightness_reboot] resumed: before={before} after={after}")
+        log(f"[brightness_reboot] resumed: after={after}")
         if before is None or after is None:
             return WorkflowResult(success=False, item_id=item_id, summary="before=" + str(before) + " after=" + str(after))
 
-        from harness.brightness import get_max_brightness
         max_b = get_max_brightness()
         tolerance = max(1, (max_b or 100) // 20)
         ok = abs(after - before) <= tolerance
 
+        # Verify reboot happened.
+        saved_boot_id = progress.get("boot_id_before")
+        try:
+            current_boot_id = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+            rebooted = saved_boot_id is not None and current_boot_id != saved_boot_id
+            log(f"[brightness_reboot] rebooted={rebooted} (saved={saved_boot_id} current={current_boot_id})")
+        except Exception:
+            rebooted = None
+
         self.persist_state(
             item_id, "state",
-            {"kind": "brightness_restart", "before": before, "after": after, "phase": "done"},
+            {"kind": "brightness_restart", "before": before, "after": after, "phase": "done", "rebooted": rebooted},
         )
         if self.artifacts is not None and item_id:
             try:
-                self.artifacts.save_text(item_id, "verify", "before=" + str(before) + " after=" + str(after) + " ok=" + str(ok) + "\n", step="after_reboot")
+                self.artifacts.save_text(item_id, "verify", "before=" + str(before) + " after=" + str(after) + " ok=" + str(ok) + " rebooted=" + str(rebooted) + "\n", step="after_reboot")
             except Exception:
                 pass
         try:
+            marker = Path("/tmp/gui-testing-brightness-reboot-marker")
             if marker.exists():
                 marker.unlink()
         except Exception:
             pass
-        return WorkflowResult(success=ok, item_id=item_id, summary="before=" + str(before) + " after=" + str(after), data={"before": before, "after": after})
+        if rebooted is False:
+            return WorkflowResult(success=False, item_id=item_id, summary="reboot did not happen (before=" + str(before) + " after=" + str(after) + ")")
+        return WorkflowResult(success=ok, item_id=item_id, summary="before=" + str(before) + " after=" + str(after), data={"before": before, "after": after, "rebooted": rebooted})
 
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:
         handler = System76Power(

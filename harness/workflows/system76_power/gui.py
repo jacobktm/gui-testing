@@ -49,17 +49,17 @@ class System76PowerGUIWorkflow(Workflow):
         )
 
     def dismiss_menus(self):
-        # Try ESC keys first
+        # Try ESC keys (may not work on COSMIC, but harmless)
         try:
             send_keys("key esc\nkey esc\n")
         except Exception:
             pass
-        # Then click at center and corners to dismiss lingering dialogs/pop-ups
-        for pos in ((0.5, 0.5), (0.1, 0.1), (0.9, 0.9)):
-            try:
-                self.driver.click_at(pos)
-            except Exception:
-                pass
+        # Click at center to dismiss lingering dialogs/pop-ups.
+        # Do NOT click at (0.1, 0.1) — that activates UI elements.
+        try:
+            self.driver.click_at((0.5, 0.5))
+        except Exception:
+            pass
         # Extra ESC for safety
         try:
             send_keys("key esc\n")

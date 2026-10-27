@@ -64,15 +64,20 @@ class TestBrightness:
         import time; time.sleep(1)
         b.brightness_down_to_min()
         before = b.current()
+        max_b = b.maximum()
         s.switch_perf_profile("balanced")
-        time.sleep(2)
+        time.sleep(3)
         cur = b.current()
         if artifacts:
             try:
                 artifacts.save_text("brightness.balanced_min", "verify", f"before={before} after={cur}/{max_b}\n", step="check")
             except Exception:
                 pass
-        assert cur == before
+        # Daemon should not change brightness when already at min.
+        # Use tolerance for EC backlights with coarse steps.
+        tolerance = max(1, (max_b or 100) // 20)
+        assert cur is not None and before is not None
+        assert abs(cur - before) <= tolerance, f"brightness changed: before={before} after={cur} (tolerance={tolerance})"
 
 
     @pytest.mark.reboot

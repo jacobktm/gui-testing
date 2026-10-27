@@ -72,10 +72,15 @@ class GuiDriver:
 
         # Send active display to model
         response = None
+        print(f"[capture_and_detect] calling LLM with model={self.ollama.model}", file=sys.stderr, flush=True)
         try:
             if self.ollama.client and self.ollama.model:
                 response = self.ollama.send_message(prompt, [str(crop.path)])
-        except Exception:
+                print(f"[capture_and_detect] LLM response: {response}", file=sys.stderr, flush=True)
+            else:
+                print(f"[capture_and_detect] Ollama not connected: client={self.ollama.client} model={self.ollama.model}", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"[capture_and_detect] LLM FAILED: {e}", file=sys.stderr, flush=True)
             response = None
 
         result = parse_detection(response, expected=expected)

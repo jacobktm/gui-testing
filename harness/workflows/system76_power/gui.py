@@ -499,18 +499,24 @@ class System76PowerGUIWorkflow(Workflow):
         if os_id == "ubuntu-26.04":
             expected = {"performance", "balanced", "battery"}
             prompt = (
-                "What performance profile is active on this system. "
-                "I want only a single word answer either 'performance', "
-                "'battery', or 'balanced'. "
-                "Power Saver is the same as 'battery'."
+                "Look at this screenshot of power settings. "
+                "One of the power profiles is currently SELECTED or HIGHLIGHTED. "
+                "Which one is selected? "
+                "The GUI may show 'High Performance' (means 'performance'), "
+                "'Balanced', 'Battery', or 'Battery Saver' (means 'battery'). "
+                "Power Saver is the same as 'battery'. "
+                "Return ONLY one word: 'performance', 'balanced', or 'battery'."
             )
         else:
             expected = {"performance", "balanced", "battery"}
             prompt = (
-                "What performance profile is active on this system. "
-                "I want only a single word answer either 'performance', "
-                "'battery', or 'balanced'. "
-                "Power Saver is the same as 'battery'."
+                "Look at this screenshot of power settings. "
+                "One of the power profiles is currently SELECTED or HIGHLIGHTED. "
+                "Which one is selected? "
+                "The GUI may show 'High Performance' (means 'performance'), "
+                "'Balanced', 'Battery', or 'Battery Saver' (means 'battery'). "
+                "Power Saver is the same as 'battery'. "
+                "Return ONLY one word: 'performance', 'balanced', or 'battery'."
             )
 
         # Dismiss any open panels first by clicking center.

@@ -207,6 +207,10 @@ class GuiDriver:
 
         result = parse_detection(response, expected=expected)
 
+        # Wait for screenshot notification to disappear (15s).
+        import time as _t
+        _t.sleep(15)
+
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_screenshot(

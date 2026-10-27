@@ -92,6 +92,13 @@ class TestSystem76PowerGUI:
 
         import time
         time.sleep(3)
+        # Dismiss any pop-ups and click center before detection.
+        try:
+            from harness.dotool import send_keys
+            send_keys("key esc\n")
+        except Exception:
+            pass
+        time.sleep(1)
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         res = wf.detect_power_profile(os_id)
         assert res.success, res.summary

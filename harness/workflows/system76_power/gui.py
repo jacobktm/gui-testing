@@ -531,7 +531,7 @@ class System76PowerGUIWorkflow(Workflow):
             self.open_power_settings(os_id)
         except Exception:
             pass
-        time.sleep(5)
+        time.sleep(8)
         # Try detection up to 2 times.
         value = None
         result = None

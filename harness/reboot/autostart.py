@@ -177,7 +177,7 @@ fi
 cd {quoted_workdir}
 echo "=== Resuming pytest run: {quoted_run_dir} ===" | tee "$LOG_FILE"
 echo "Started at: $(date)" | tee -a "$LOG_FILE"
-{command} --resume-run {quoted_run_dir} 2>&1 | tee -a "$LOG_FILE"
+{command} -s --resume-run {quoted_run_dir} 2>&1 | tee -a "$LOG_FILE"
 status=${{PIPESTATUS[0]}}
 # One parameter set per reboot: do not start again on the next boot.
 systemctl --user disable {UNIT_NAME} >/dev/null 2>&1 || true

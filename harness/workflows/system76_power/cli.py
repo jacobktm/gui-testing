@@ -300,6 +300,12 @@ class System76PowerCLIWorkflow(Workflow):
         if phase in ("rebooting", "done"):
             current = handler.get_graphics_mode()
             print(f"  verify: current={current!r} target={target!r} match={current == target}", flush=True)
+            # Check if reboot actually happened
+            try:
+                uptime = float(open('/proc/uptime').read().split()[0])
+                print(f"  uptime after boot: {uptime:.0f}s", flush=True)
+            except Exception:
+                pass
             target_ok = (current == target)
 
             # On Pop!_OS 22.04, also verify via GUI that the extension reflects

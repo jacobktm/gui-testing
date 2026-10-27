@@ -117,6 +117,30 @@ class System76PowerGUIWorkflow(Workflow):
             pass
 
 
+    def _get_profile_coords_ollama(self, profile: str, os_id: str, item_id: str = None) -> tuple[float, float] | None:
+        """Try to find profile button coordinates via Ollama. Falls back to None."""
+        label_map = {
+            "performance": "High Performance",
+            "balanced": "Balanced",
+            "battery": "Battery",
+        }
+        label = label_map.get(profile, profile)
+        try:
+            coords = self.driver.detect_coordinates(
+                label,
+                item_id=item_id,
+                phase="detect",
+                step="profile_coords",
+            )
+            if coords is not None:
+                import sys
+                print(f"[ollama_coords] {profile} -> {coords}", file=sys.stderr, flush=True)
+                return coords
+        except Exception as e:
+            import sys
+            print(f"[ollama_coords] failed for {profile}: {e}", file=sys.stderr, flush=True)
+        return None
+
     def set_power_profile_gui(self, profile: str, os_id: str, item_id: str = "gui.power_profile_switch") -> WorkflowResult:
         try:
             self.open_power_settings(os_id)
@@ -128,6 +152,10 @@ class System76PowerGUIWorkflow(Workflow):
                 coords = Coords.UBUNTU_26.get(f"profile_{profile}")
             else:
                 coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
+            # Try Ollama coordinate detection first.
+            ollama_coords = self._get_profile_coords_ollama(profile, os_id, item_id=item_id)
+            if ollama_coords is not None:
+                coords = ollama_coords
             if coords:
                 import sys
                 print(f"[set_power_profile_gui] clicking profile {profile} at {coords}", file=sys.stderr, flush=True)

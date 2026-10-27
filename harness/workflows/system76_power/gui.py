@@ -519,12 +519,18 @@ class System76PowerGUIWorkflow(Workflow):
                 "'High Performance', 'Balanced', 'Battery', or 'Battery Saver'."
             )
 
-        # Open power settings first so the panel is visible.
+        # Dismiss any open panels first, then open power settings fresh.
+        try:
+            from ...dotool import send_keys
+            send_keys("key esc\n")
+        except Exception:
+            pass
+        import time
+        time.sleep(1)
         try:
             self.open_power_settings(os_id)
         except Exception:
             pass
-        import time
         time.sleep(5)
         # Try detection up to 2 times.
         value = None

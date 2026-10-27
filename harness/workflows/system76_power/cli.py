@@ -480,12 +480,14 @@ class System76PowerCLIWorkflow(Workflow):
         phase = progress.get("phase", "before")
 
         if phase == "before":
+            # First invocation: save brightness and reboot.
             before = get_brightness()
             if before is None:
                 return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
+            # Save state with phase="after" so resumed run knows to compare.
             self.persist_state(
                 item_id, "state",
-                {"kind": "brightness_restart", "before": before, "phase": "before"},
+                {"kind": "brightness_restart", "before": before, "phase": "after"},
             )
             if self.artifacts is not None and item_id:
                 try:
@@ -497,6 +499,7 @@ class System76PowerCLIWorkflow(Workflow):
             handler.wait_for_boot()
             return WorkflowResult(success=True, item_id=item_id, summary="saved=" + str(before) + ", rebooting")
 
+        # Resumed invocation (phase == "after"): compare brightness.
         before = progress.get("before")
         after = get_brightness()
         if before is None or after is None:

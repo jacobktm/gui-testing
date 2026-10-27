@@ -78,11 +78,21 @@ class TestBrightness:
     @pytest.mark.reboot
     def test_brightness_preserved_across_reboot(self, artifacts):
         """System restart: screen brightness should be the same as before."""
+        import subprocess
+        # Debug: show system76-power profile output
+        r = subprocess.run(["system76-power", "profile"], capture_output=True, text=True, timeout=10)
+        print(f"DEBUG profile rc={r.returncode}", flush=True)
+        for line in r.stdout.splitlines():
+            print(f"DEBUG   {line}", flush=True)
+        print(f"DEBUG stderr={r.stderr.strip()}", flush=True)
+
         from harness.workflows import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.check_brightness_after_reboot()
-        assert res.success, res.summary
+        print(f"DEBUG result: success={res.success} summary={res.summary}", flush=True)
+        if not res.success:
+            pytest.fail(res.summary)
 
 
     def test_brightness_daemon_restart(self, artifacts):

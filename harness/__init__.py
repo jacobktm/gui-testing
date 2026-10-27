@@ -28,6 +28,7 @@ __all__ = [
     "imageutils",
     "ollama_client",
     "reboot",
+    "report",
     "screenshots",
 ]
 
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
         imageutils,
         ollama_client,
         reboot,
+        report,
         screenshots,
     )
 

@@ -486,8 +486,14 @@ class System76PowerGUIWorkflow(Workflow):
                 success=False, item_id=item_id, summary=f"detect failed: {exc}"
             )
 
-        # Wait for screenshot notification to disappear (15s).
-        time.sleep(5)
+        # Click center to dismiss screenshot notification, then wait.
+        try:
+            self.driver.go_to((0.5, 0.5))
+            self.driver.click_at((0.5, 0.5))
+        except Exception:
+            pass
+        import time as _t
+        _t.sleep(5)
 
         if self.artifacts is not None and item_id:
             try:
@@ -555,7 +561,12 @@ class System76PowerGUIWorkflow(Workflow):
                 success=False, item_id=item_id, summary=f"detect failed: {exc}"
             )
 
-        # Wait for screenshot notification to disappear (15s).
+        # Click center to dismiss screenshot notification, then wait.
+        try:
+            self.driver.go_to((0.5, 0.5))
+            self.driver.click_at((0.5, 0.5))
+        except Exception:
+            pass
         import time as _t
         _t.sleep(5)
 

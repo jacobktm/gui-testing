@@ -68,7 +68,14 @@ class GuiDriver:
 
         result = parse_detection(response, expected=expected)
 
-        # Wait for screenshot notification to disappear (15s).
+        # Click center to dismiss screenshot notification, then wait.
+        try:
+            go_to = self.go_to
+            click_at = self.click_at
+            go_to((0.5, 0.5))
+            click_at((0.5, 0.5))
+        except Exception:
+            pass
         import time as _t
         _t.sleep(5)
 

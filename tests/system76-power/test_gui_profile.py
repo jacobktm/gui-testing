@@ -30,20 +30,20 @@ class TestSystem76PowerGUI:
         if shot_path.exists():
             shot_path.unlink()
         try:
-            capture(shot_path)
+            capture(shot_path, timeout=3.0)
         except Exception:
             pass  # Permission dialog may block; that's expected on first run
         # Wait for permission dialog, then try to dismiss/allow.
         # Note: dotool may not work in the permission dialog context.
         # The D-Bus pre-grant should prevent the dialog from appearing.
         import time
-        time.sleep(5)
+        time.sleep(2)
         # Try multiple methods to dismiss the permission dialog.
         for key in ("enter", "space"):
             try:
                 from harness.dotool import send_keys
                 send_keys(f"key {key}")
-                time.sleep(1)
+                time.sleep(0.5)
             except Exception:
                 pass
         # Also try clicking center (in case it's a clickable dialog).
@@ -53,7 +53,7 @@ class TestSystem76PowerGUI:
             click()
         except Exception:
             pass
-        time.sleep(2)
+        time.sleep(1)
         # Re-grant permission in case it was revoked.
         try:
             from harness.screenshots.screenshot import grant_screenshot_permission

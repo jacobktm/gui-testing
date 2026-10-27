@@ -127,6 +127,8 @@ if $NEEDS_REBOOT_SETUP; then
         sudo -n python3 -m harness.reboot cleanup 2>/dev/null || true
         # Restore original graphics mode if tests changed it.
         python3 -c "from handlers.system76_power import System76Power; h=System76Power(); h.restore_original_graphics_mode() and h.reboot()" 2>/dev/null || true
+        # Restore brightness to max (tests may leave it at min).
+        python3 -c "from harness.brightness import BrightnessHandler; BrightnessHandler().brightness_up_to_max()" 2>/dev/null || true
     }
     trap cleanup EXIT
 fi

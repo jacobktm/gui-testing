@@ -268,6 +268,12 @@ def pytest_sessionfinish(session, exitstatus):
             h.wait_for_boot()
     except Exception:
         pass
+    # Restore brightness to max (tests may leave it at min).
+    try:
+        from harness.brightness import BrightnessHandler
+        BrightnessHandler().brightness_up_to_max()
+    except Exception:
+        pass
     setup = getattr(config, "_gui_reboot_setup", None)
     if os.environ.get("GUI_TESTING_KEEP_REBOOT_SETUP") == "1":
         return

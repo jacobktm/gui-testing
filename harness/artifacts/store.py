@@ -312,7 +312,7 @@ class RunArtifacts:
     ) -> SavedArtifact:
         """Persist a named state document for resume/transition bookkeeping."""
         text = json.dumps(state, indent=2, ensure_ascii=False) + "\n"
-        return self._save_text(item_id, phase, text, kind="state", suffix=".json", step=step)
+        return self._save_text(item_id, phase, text, kind="state", suffix=".json", step=step, name=None, metadata=None)
 
     def load_state(self, item_id: str, phase: str = "state") -> dict[str, Any] | None:
         """Load the newest persisted state document for an item/phase, if any."""

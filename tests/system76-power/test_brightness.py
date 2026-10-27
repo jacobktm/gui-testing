@@ -15,6 +15,7 @@ class TestBrightness:
             pytest.skip("no backlight")
         b.brightness_up_to_max()
         s.switch_perf_profile("balanced")
+        import time; time.sleep(2)
         cur = b.current()
         if artifacts:
             try:
@@ -23,7 +24,7 @@ class TestBrightness:
                 pass
         # Should drop to ~50% when going to balanced from max
         assert cur is not None
-        assert cur <= int(max_b * 0.6) + 2  # allow some tolerance
+        assert cur <= int(max_b * 0.6) + 2, f"brightness={cur}/{max_b} (expected <= {int(max_b * 0.6) + 2})"
 
     def test_brightness_battery_max(self, artifacts):
         b = BrightnessHandler()
@@ -33,6 +34,7 @@ class TestBrightness:
             pytest.skip("no backlight")
         b.brightness_up_to_max()
         s.switch_perf_profile("battery")
+        import time; time.sleep(2)
         cur = b.current()
         if artifacts:
             try:
@@ -40,7 +42,7 @@ class TestBrightness:
             except Exception:
                 pass
         assert cur is not None
-        assert cur <= int(max_b * 0.2) + 2
+        assert cur <= int(max_b * 0.2) + 2, f"brightness={cur}/{max_b} (expected <= {int(max_b * 0.2) + 2})"
 
     def test_brightness_balanced_min(self, artifacts):
         b = BrightnessHandler()
@@ -51,6 +53,7 @@ class TestBrightness:
         b.brightness_down_to_min()
         before = b.current()
         s.switch_perf_profile("balanced")
+        import time; time.sleep(2)
         cur = b.current()
         if artifacts:
             try:

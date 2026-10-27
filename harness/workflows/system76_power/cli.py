@@ -263,7 +263,7 @@ class System76PowerCLIWorkflow(Workflow):
                 print(f"  Already in {target} mode, no transition needed.", flush=True)
                 verified = True
                 gui_verified = None
-                entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
+                entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified, "source_mismatch": source_mismatch}
                 results.append(entry)
                 done.add((source, target))
                 self.persist_state(item_id, "state", {
@@ -283,8 +283,8 @@ class System76PowerCLIWorkflow(Workflow):
                 return WorkflowResult(
                     success=verified,
                     item_id=item_id,
-                    summary=f"{source}->{target} (actual: {current}, verified={verified})",
-                    data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
+                    summary=f"{source}->{target} (actual: {current}, verified={verified}, source_mismatch={source_mismatch})",
+                    data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified, "source_mismatch": source_mismatch},
                 )
 
             # --- Phase: start - record source, switch to target, save, reboot ---
@@ -387,11 +387,11 @@ class System76PowerCLIWorkflow(Workflow):
                     except Exception:
                         gui_verified = None
 
-                verified = target_ok
+                verified = target_ok and source_ok
                 if gui_verified is not None:
                     verified = verified and gui_verified
 
-                entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
+                entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified, "source_mismatch": source_mismatch}
                 results.append(entry)
                 done.add((source, target))
                 self.persist_state(item_id, "state", {
@@ -413,7 +413,7 @@ class System76PowerCLIWorkflow(Workflow):
                 return WorkflowResult(
                     success=verified,
                     item_id=item_id,
-                    summary=f"{source}->{target} (actual: {current}, verified={verified})",
+                    summary=f"{source}->{target} (actual: {current}, verified={verified}, source_mismatch={source_mismatch})",
                     data={"from": source, "to": target, "actual": current, "verified": verified},
                 )
 

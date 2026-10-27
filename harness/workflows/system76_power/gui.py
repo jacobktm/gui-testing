@@ -70,6 +70,15 @@ class System76PowerGUIWorkflow(Workflow):
                 coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
             if coords:
                 self.driver.click_at(coords)
+            # Wait for any pop-up/notification, then dismiss.
+            import time
+            time.sleep(2)
+            self.dismiss_menus()
+            # Extra dismiss: move to center and click to close lingering dialogs.
+            try:
+                self.driver.go_to((0.5, 0.5)).click_at((0.5, 0.5))
+            except Exception:
+                pass
             if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
                 self.dismiss_menus()
             if self.artifacts and item_id:

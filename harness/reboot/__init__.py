@@ -169,9 +169,21 @@ def finish_reboot(*, username: str | None = None) -> bool:
                 except Exception:
                     pass
 
-    restored = restore_autologin()
+    # For COSMIC, try force_restore first (doesn't depend on state file).
+    restored = False
+    try:
+        from .session import force_restore_autologin
+        restored = force_restore_autologin()
+        import sys
+        print(f"[finish_reboot] force_restore_autologin: {restored}", file=sys.stderr, flush=True)
+    except Exception as e:
+        import sys
+        print(f"[finish_reboot] force_restore exception: {e}", file=sys.stderr, flush=True)
     if not restored:
-        # Fallback: force-remove autologin config without state file.
+        restored = restore_autologin()
+        import sys
+        print(f"[finish_reboot] restore_autologin: {restored}", file=sys.stderr, flush=True)
+    if not restored:
         try:
             from .session import force_restore_autologin
             restored = force_restore_autologin()

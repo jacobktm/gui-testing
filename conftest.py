@@ -294,6 +294,21 @@ def pytest_sessionfinish(session, exitstatus):
     # finishes (or is interrupted); restore the machine either way.
     finish_reboot(username=username)
     config._gui_reboot_finished = True
+
+    # Final reboot after cleanup (signals test completion to the user).
+    # Must happen BEFORE sudoers cleanup (needs passwordless sudo).
+    if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
+        try:
+            subprocess.run(
+                ["sudo", "-n", "systemctl", "reboot"],
+                capture_output=True, text=True, timeout=10,
+            )
+        except Exception:
+            pass
+        # Give the reboot a moment to start.
+        import time
+        time.sleep(5)
+
     # Clean up passwordless sudoers rule if pytest.sh created one.
     if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
         try:

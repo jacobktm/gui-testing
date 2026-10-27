@@ -601,15 +601,20 @@ def force_restore_autologin() -> bool:
     Removes [initial_session] from greetd configs and AutomaticLogin from
     gdm configs.  Used when the state file is missing or restore failed.
     """
+    import sys
     ok = True
     # COSMIC / greetd
     for config_path in (COSMIC_GREETER_CONFIG, GREETD_CONFIG):
         if config_path.exists():
             text = _read_privileged(config_path)
+            print(f"[force_restore] {config_path}: exists, has_initial_session={'[initial_session]' in (text or '')}", file=sys.stderr, flush=True)
             if text is not None and "[initial_session]" in text:
                 cleaned = strip_toml_section(text, "initial_session").rstrip() + "\n"
                 if not _write_privileged(config_path, cleaned):
                     ok = False
+                    print(f"[force_restore] FAILED to write {config_path}", file=sys.stderr, flush=True)
+                else:
+                    print(f"[force_restore] cleaned {config_path}", file=sys.stderr, flush=True)
     # GNOME / gdm
     for config_path in GDM_CONFIGS:
         if config_path.exists():

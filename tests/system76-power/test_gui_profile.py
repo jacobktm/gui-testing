@@ -76,6 +76,40 @@ class TestSystem76PowerGUI:
         res = wf.get_brightness()
         assert res.success, res.summary
 
+    def test_transition_to_performance(self, artifacts):
+        """Ensure starting from performance profile (known starting point)."""
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        os_id = _os_id()
+        res = wf.transition_to_performance(os_id=os_id, item_id="gui.power_profile_transition.to_performance")
+        assert res.success, res.summary
+
+    def test_gui_transition_to_battery(self, artifacts):
+        """Transition to battery profile via GUI, verify CLI agreement."""
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        os_id = _os_id()
+        res = wf.transition_perf_profile("battery", os_id=os_id, item_id="gui.power_profile_transition.to_battery")
+        assert res.success, res.summary
+        data = res.data or {}
+        assert data.get("verified") is True, f"verification failed: {data}"
+
+    def test_gui_transition_to_balanced(self, artifacts):
+        """Transition to balanced profile via GUI, verify CLI agreement."""
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        os_id = _os_id()
+        res = wf.transition_perf_profile("balanced", os_id=os_id, item_id="gui.power_profile_transition.to_balanced")
+        assert res.success, res.summary
+        data = res.data or {}
+        assert data.get("verified") is True, f"verification failed: {data}"
+
+    def test_gui_transition_to_performance(self, artifacts):
+        """Transition to performance profile via GUI, verify CLI agreement."""
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        os_id = _os_id()
+        res = wf.transition_perf_profile("performance", os_id=os_id, item_id="gui.power_profile_transition.to_performance")
+        assert res.success, res.summary
+        data = res.data or {}
+        assert data.get("verified") is True, f"verification failed: {data}"
+
     def test_detect_graphics_mode(self, artifacts):
         from handlers.system76_power import System76Power
         _h = System76Power(artifacts=artifacts)

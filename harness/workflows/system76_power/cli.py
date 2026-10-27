@@ -584,6 +584,57 @@ class System76PowerCLIWorkflow(Workflow):
         handler.wait_for_boot()
         return WorkflowResult(success=True, item_id=item_id, summary="set to 50%, rebooting")
 
+    def verify_cli_profile_reflected_in_extension(self, target: str, os_id: str = None, item_id: str = "cli.profile_reflected") -> WorkflowResult:
+        """Switch profile via CLI, verify the GUI extension reflects it."""
+        import os
+        handler = System76Power(
+            test_id="system76_power.cli.profile",
+            item_id=item_id,
+            phase="action",
+            artifacts=self.artifacts,
+        )
+        handler.switch_perf_profile(target)
+        import time
+        time.sleep(3)
+        # Dismiss pop-ups.
+        try:
+            from ...dotool import send_keys
+            send_keys("key esc\n")
+        except Exception:
+            pass
+        time.sleep(1)
+
+        if os_id is None:
+            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+            if not os_id or "-" not in os_id:
+                try:
+                    with open("/etc/os-release") as f:
+                        for line in f:
+                            if "=" in line:
+                                key, val = line.strip().split("=", 1)
+                                if key == "ID":
+                                    os_id = val.strip().strip('"').lower()
+                                elif key == "VERSION_ID":
+                                    v = val.strip().strip('"')
+                                    if v:
+                                        os_id = f"{os_id}-{v}"
+                except Exception:
+                    pass
+
+        from ..system76_power.gui import System76PowerGUIWorkflow
+        gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
+        res = gui_wf.detect_power_profile(os_id=os_id, item_id=f"{item_id}.detect")
+        if not res.success:
+            return WorkflowResult(success=False, item_id=item_id, summary=f"detect failed: {res.summary}", data=res.data)
+        detected = (res.data or {}).get("profile", "").lower()
+        verified = (detected == target.lower())
+        return WorkflowResult(
+            success=verified,
+            item_id=item_id,
+            summary=f"cli={target} gui={detected} verified={verified}",
+            data={"target": target, "detected": detected, "verified": verified},
+        )
+
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:
         handler = System76Power(
             test_id="system76_power.cli.graphics_power",

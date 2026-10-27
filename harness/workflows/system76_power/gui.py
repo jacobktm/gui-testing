@@ -52,6 +52,52 @@ class System76PowerGUIWorkflow(Workflow):
             data={"os_id": os_id},
         )
 
+    def transition_to_performance(self, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transition.to_performance") -> WorkflowResult:
+        """Ensure the system starts in performance profile (known starting point)."""
+        from handlers.system76_power import System76Power
+        handler = System76Power(artifacts=self.artifacts)
+        current = handler.get_perf_profile()
+        if current == "performance":
+            return WorkflowResult(success=True, item_id=item_id, summary="already performance", data={"profile": "performance"})
+        res = self.set_power_profile_gui("performance", os_id=os_id, item_id=item_id)
+        if not res.success:
+            return res
+        import time
+        time.sleep(2)
+        handler2 = System76Power(artifacts=self.artifacts)
+        actual = handler2.get_perf_profile()
+        verified = (actual == "performance")
+        return WorkflowResult(success=verified, item_id=item_id, summary=f"to_performance (actual: {actual})", data={"profile": actual, "verified": verified})
+
+    def transition_perf_profile(self, target: str, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transition") -> WorkflowResult:
+        """Transition to a power profile via GUI and verify CLI agreement."""
+        from handlers.system76_power import System76Power
+        res = self.set_power_profile_gui(target, os_id=os_id, item_id=item_id)
+        if not res.success:
+            return res
+        import time
+        time.sleep(3)
+        handler = System76Power(artifacts=self.artifacts)
+        actual = handler.get_perf_profile()
+        verified = (actual == target)
+        # Also verify via GUI detection
+        gui_verified = None
+        try:
+            det = self.detect_power_profile(os_id=os_id)
+            if det.success:
+                detected = (det.data or {}).get("profile", "").lower()
+                gui_verified = (detected == target.lower())
+        except Exception:
+            gui_verified = None
+        if gui_verified is not None:
+            verified = verified and gui_verified
+        return WorkflowResult(
+            success=verified,
+            item_id=item_id,
+            summary=f"profile={target} (cli={actual}, gui={gui_verified})",
+            data={"target": target, "cli": actual, "gui_verified": gui_verified, "verified": verified},
+        )
+
     def dismiss_menus(self):
         # Try ESC keys (may not work on COSMIC, but harmless)
         try:

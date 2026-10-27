@@ -536,6 +536,13 @@ class System76PowerCLIWorkflow(Workflow):
                 pass
             return WorkflowResult(success=ok, item_id=item_id, summary="before=" + str(before) + " after=" + str(after), data={"before": before, "after": after})
 
+        # Safety: if we're in a resumed run but no state was found,
+        # don't reboot again (would cause infinite loop).
+        import os
+        if os.environ.get("GUI_TESTING_RESUMED") == "1":
+            log("[brightness_reboot] RESUMED but no state found - refusing to reboot again")
+            return WorkflowResult(success=False, item_id=item_id, summary="no persisted state on resume (infinite loop prevented)")
+
         # First invocation: save brightness, set to 50%, reboot.
         # Set brightness to 50% to have a known non-trivial value.
         bh = BrightnessHandler()

@@ -431,7 +431,7 @@ class System76PowerCLIWorkflow(Workflow):
             traceback.print_exc()
             return WorkflowResult(success=False, item_id=item_id, summary=f"exception: {e}", data={"error": str(e)})
 
-    def verify_cli_graphics_reflected_in_extension(self, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
+    def verify_cli_graphics_reflected_in_extension(self, item_id: str = "cli.graphics_transition") -> WorkflowResult:
         """Aggregate GUI verification from all CLI graphics transitions."""
         modes = ["nvidia", "integrated", "hybrid", "compute"]
         pairs = [(s, t) for s in modes for t in modes if s != t]

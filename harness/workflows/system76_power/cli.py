@@ -609,35 +609,46 @@ class System76PowerCLIWorkflow(Workflow):
             boot_id_before = None
 
         self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current, "profile": "performance"})
-        # Flush to disk before reboot.
+        # Verify state was actually saved before rebooting.
         import os as _os
         try:
             _os.sync()
         except Exception:
             pass
+        verified_save = False
+        for attempt in range(5):
+            loaded = self.load_persisted_state(item_id, phase="state")
+            if isinstance(loaded, dict) and loaded.get("phase") == "rebooting":
+                verified_save = True
+                log(f"[brightness_reboot] state verified saved (attempt {attempt+1})")
+                break
+            log(f"[brightness_reboot] state NOT found (attempt {attempt+1}), retrying...")
+            time.sleep(1)
+            self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current, "profile": "performance"})
+            try:
+                _os.sync()
+            except Exception:
+                pass
+
         if self.artifacts is not None and item_id:
             try:
-                self.artifacts.save_text(item_id, "setup", f"profile=performance brightness={current}/{max_b}\nreadings={readings_before}\n", step="before_reboot")
+                self.artifacts.save_text(item_id, "setup", f"profile=performance brightness={current}/{max_b}\nreadings={readings_before}\nverified_save={verified_save}\n", step="before_reboot")
             except Exception as e:
                 log(f"[brightness_reboot] save_text failed: {e}")
-        # Flush again.
         try:
             _os.sync()
         except Exception:
             pass
-        # Debug: list state files.
-        if self.artifacts is not None:
-            try:
-                sd = self.artifacts.phase_dir(item_id, "state", create=False)
-                log(f"[brightness_reboot] state dir: {sd} exists={sd.exists()}")
-                if sd.exists():
-                    log(f"[brightness_reboot] state files: {list(sd.iterdir())}")
-            except Exception as e:
-                log(f"[brightness_reboot] state dir check failed: {e}")
+
+        if not verified_save:
+            log("[brightness_reboot] FAILED to persist state - aborting reboot")
+            return WorkflowResult(success=False, item_id=item_id, summary="failed to persist state before reboot")
+
         try:
-            Path("/tmp/gui-testing-brightness-reboot-marker").write_text("rebooting", encoding="utf-8")
+            Path("/tmp/gui-testing-brightness-reboot-marker").write_text(str(current), encoding="utf-8")
         except Exception:
             pass
+
 
         handler.setup_autologin()
         log("[brightness_reboot] rebooting now")

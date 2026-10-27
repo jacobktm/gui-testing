@@ -26,25 +26,49 @@ __all__ = [
 
 
 def get_backlight() -> Optional[Path]:
-    """Return the first backlight device directory, or ``None``."""
+    """Return the best backlight device directory, or ``None``.
+
+    On Ubuntu the brightness may be exposed via a symlinked device that
+    points to an EC (embedded controller) source.  Prefer devices that
+    have ``actual_brightness`` (more reliable) and symlinked (EC) devices
+    over plain ``acpi_video0``.
+    """
     base = Path("/sys/class/backlight")
     if not base.exists():
         return None
-    for child in sorted(base.iterdir()):
-        if child.is_dir():
-            return child
-    return None
+    candidates = [c for c in base.iterdir() if c.is_dir() or c.is_symlink()]
+    if not candidates:
+        return None
+    # Score each candidate: prefer symlinked (EC) devices and those with
+    # actual_brightness.
+    def score(p: Path) -> int:
+        s = 0
+        if p.is_symlink():
+            s += 10
+        if (p / "actual_brightness").exists():
+            s += 5
+        if "acpi_video" not in p.name:
+            s += 3
+        return s
+
+    return max(candidates, key=score)
 
 
 def get_brightness(backlight: Optional[Path] = None) -> Optional[int]:
-    """Read the current brightness value from sysfs."""
+    """Read the current brightness value from sysfs.
+
+    Prefers ``actual_brightness`` (reflects real hardware state) over
+    ``brightness`` (which may be a pending value).
+    """
     bl = backlight or get_backlight()
     if bl is None:
         return None
-    try:
-        return int((bl / "brightness").read_text().strip())
-    except (OSError, ValueError):
-        return None
+    for name in ("actual_brightness", "brightness"):
+        try:
+            return int((bl / name).read_text().strip())
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def get_max_brightness(backlight: Optional[Path] = None) -> Optional[int]:

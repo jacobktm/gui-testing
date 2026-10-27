@@ -84,6 +84,25 @@ if command -v cosmic-screenshot >/dev/null 2>&1; then
         org.freedesktop.impl.portal.PermissionStore SetPermission \
         sbssas "screenshot" false "com.system76.CosmicScreenshot" "screenshot" 1 "granted" \
         >/dev/null 2>&1 || true
+
+    # Trigger a test screenshot to surface the permission dialog early.
+    # The user can dismiss it during setup so tests don't block on it.
+    echo ""
+    echo "Taking a test screenshot to verify permission (dismiss any dialog that appears)..."
+    TEST_SHOT="/tmp/opencode/setup_test_shot.png"
+    rm -f "$TEST_SHOT"
+    timeout 10 cosmic-screenshot --interactive=false >/dev/null 2>&1 || true
+    sleep 2
+    if ls ~/Pictures/Screenshot_*.png >/dev/null 2>&1; then
+        LATEST=$(ls -t ~/Pictures/Screenshot_*.png 2>/dev/null | head -1)
+        if [ -n "$LATEST" ]; then
+            mv "$LATEST" "$TEST_SHOT" 2>/dev/null || true
+            echo "Screenshot OK: $TEST_SHOT"
+        fi
+    else
+        echo "Warning: test screenshot may have failed. Permission dialog may appear during tests."
+    fi
+    echo ""
 fi
 
 # --- Determine if reboot test setup is needed ---

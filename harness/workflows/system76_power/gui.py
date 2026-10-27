@@ -16,10 +16,14 @@ class System76PowerGUIWorkflow(Workflow):
 
     def open_power_settings(self, os_id: str) -> WorkflowResult:
         """Open power settings via the known click position."""
+        import sys
         try:
+            print(f"[open_power_settings] clicking OPEN {Coords.OPEN}", file=sys.stderr, flush=True)
             try:
                 self.driver.click_at(Coords.OPEN)
-            except Exception:
+                print(f"[open_power_settings] clicked OPEN OK", file=sys.stderr, flush=True)
+            except Exception as e:
+                print(f"[open_power_settings] click OPEN failed: {e}", file=sys.stderr, flush=True)
                 pass
             if os_id == "pop-22.04":
                 try:
@@ -459,15 +463,9 @@ class System76PowerGUIWorkflow(Workflow):
         except Exception:
             pass
         import time
-        time.sleep(3)
-        # Dismiss any lingering pop-ups with ESC only (don't click center,
-        # that would close the settings panel).
-        try:
-            from ...dotool import send_keys
-            send_keys("key esc\n")
-        except Exception:
-            pass
-        time.sleep(1)
+        time.sleep(5)
+        # Do NOT send ESC or click center — that closes the settings panel.
+        # Just wait for it to fully render, then capture.
         try:
             value, result = self.driver.capture_and_detect(
                 prompt,

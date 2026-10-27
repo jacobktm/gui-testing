@@ -15,30 +15,120 @@ class System76PowerGUIWorkflow(Workflow):
         self.brightness = BrightnessHandler()
 
     def open_power_settings(self, os_id: str) -> WorkflowResult:
-        """Open power settings via the known click position."""
+        """Open power settings via Ollama-detected click positions."""
         import sys
+        import time
         try:
-            print(f"[open_power_settings] clicking OPEN {Coords.OPEN}", file=sys.stderr, flush=True)
-            try:
-                self.driver.click_at(Coords.OPEN)
-                print(f"[open_power_settings] clicked OPEN OK", file=sys.stderr, flush=True)
-            except Exception as e:
-                print(f"[open_power_settings] click OPEN failed: {e}", file=sys.stderr, flush=True)
-                pass
             if os_id == "pop-22.04":
-                try:
-                    extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
-                    self.driver.click_at(extra)
-                except Exception:
-                    pass
-            elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                try:
-                    extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
-                    if extra:
+                # Pop 22.04: click system tray region, then battery icon in popup.
+                coords = self.driver.detect_all_coordinates(
+                    ["battery", "network", "sound", "power"],
+                    item_id="gui.power_settings_open",
+                    phase="detect",
+                    step="open_coords",
+                )
+                # Click the system tray area (try battery, network, or sound).
+                clicked = False
+                for label in ("battery", "power", "network", "sound"):
+                    if label in coords:
+                        try:
+                            self.driver.click_at(coords[label])
+                            clicked = True
+                            print(f"[open_power_settings] clicked {label} at {coords[label]}", file=sys.stderr, flush=True)
+                            break
+                        except Exception as e:
+                            print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
+                if not clicked:
+                    # Fallback to hardcoded.
+                    self.driver.click_at(Coords.OPEN)
+                time.sleep(2)
+                # Now click battery icon in the popup menu.
+                coords2 = self.driver.detect_all_coordinates(
+                    ["battery", "power", "power settings"],
+                    item_id="gui.power_settings_open",
+                    phase="detect",
+                    step="popup_coords",
+                )
+                for label in ("battery", "power", "power settings"):
+                    if label in coords2:
+                        try:
+                            self.driver.click_at(coords2[label])
+                            print(f"[open_power_settings] clicked popup {label} at {coords2[label]}", file=sys.stderr, flush=True)
+                            break
+                        except Exception as e:
+                            print(f"[open_power_settings] click popup {label} failed: {e}", file=sys.stderr, flush=True)
+                else:
+                    # Fallback to hardcoded extra click.
+                    try:
+                        extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
                         self.driver.click_at(extra)
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
+            elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+                coords = self.driver.detect_all_coordinates(
+                    ["battery", "network", "sound", "power"],
+                    item_id="gui.power_settings_open",
+                    phase="detect",
+                    step="open_coords",
+                )
+                clicked = False
+                for label in ("battery", "power", "network", "sound"):
+                    if label in coords:
+                        try:
+                            self.driver.click_at(coords[label])
+                            clicked = True
+                            print(f"[open_power_settings] clicked {label} at {coords[label]}", file=sys.stderr, flush=True)
+                            break
+                        except Exception as e:
+                            print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
+                if not clicked:
+                    self.driver.click_at(Coords.OPEN)
+                time.sleep(2)
+                coords2 = self.driver.detect_all_coordinates(
+                    ["battery", "power", "power settings"],
+                    item_id="gui.power_settings_open",
+                    phase="detect",
+                    step="popup_coords",
+                )
+                for label in ("battery", "power", "power settings"):
+                    if label in coords2:
+                        try:
+                            self.driver.click_at(coords2[label])
+                            print(f"[open_power_settings] clicked popup {label} at {coords2[label]}", file=sys.stderr, flush=True)
+                            break
+                        except Exception as e:
+                            print(f"[open_power_settings] click popup {label} failed: {e}", file=sys.stderr, flush=True)
+                else:
+                    try:
+                        extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
+                        if extra:
+                            self.driver.click_at(extra)
+                    except Exception:
+                        pass
+            else:
+                # Pop!_OS 24.04 (COSMIC): click battery icon in panel.
+                coords = self.driver.detect_all_coordinates(
+                    ["battery", "power", "battery icon"],
+                    item_id="gui.power_settings_open",
+                    phase="detect",
+                    step="open_coords",
+                )
+                clicked = False
+                for label in ("battery", "battery icon", "power"):
+                    if label in coords:
+                        try:
+                            self.driver.click_at(coords[label])
+                            clicked = True
+                            print(f"[open_power_settings] clicked {label} at {coords[label]}", file=sys.stderr, flush=True)
+                            break
+                        except Exception as e:
+                            print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
+                if not clicked:
+                    # Fallback to hardcoded.
+                    self.driver.click_at(Coords.OPEN)
+            time.sleep(3)
         except Exception as exc:
+            print(f"[open_power_settings] FAILED: {exc}", file=sys.stderr, flush=True)
             return WorkflowResult(
                 success=False,
                 item_id="gui.power_settings_open",
@@ -50,52 +140,6 @@ class System76PowerGUIWorkflow(Workflow):
             item_id="gui.power_settings_open",
             summary="opened power settings",
             data={"os_id": os_id},
-        )
-
-    def transition_to_performance(self, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transition.to_performance") -> WorkflowResult:
-        """Ensure the system starts in performance profile (known starting point)."""
-        from handlers.system76_power import System76Power
-        handler = System76Power(artifacts=self.artifacts)
-        current = handler.get_perf_profile()
-        if current == "performance":
-            return WorkflowResult(success=True, item_id=item_id, summary="already performance", data={"profile": "performance"})
-        res = self.set_power_profile_gui("performance", os_id=os_id, item_id=item_id)
-        if not res.success:
-            return res
-        import time
-        time.sleep(2)
-        handler2 = System76Power(artifacts=self.artifacts)
-        actual = handler2.get_perf_profile()
-        verified = (actual == "performance")
-        return WorkflowResult(success=verified, item_id=item_id, summary=f"to_performance (actual: {actual})", data={"profile": actual, "verified": verified})
-
-    def transition_perf_profile(self, source: str, target: str, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transition") -> WorkflowResult:
-        """Transition from source to target power profile via GUI and verify CLI+GUI agreement."""
-        from handlers.system76_power import System76Power
-        res = self.set_power_profile_gui(target, os_id=os_id, item_id=item_id)
-        if not res.success:
-            return res
-        import time
-        time.sleep(3)
-        handler = System76Power(artifacts=self.artifacts)
-        actual = handler.get_perf_profile()
-        verified = (actual == target)
-        # Also verify via GUI detection
-        gui_verified = None
-        try:
-            det = self.detect_power_profile(os_id=os_id)
-            if det.success:
-                detected = (det.data or {}).get("profile", "").lower()
-                gui_verified = (detected == target.lower())
-        except Exception:
-            gui_verified = None
-        if gui_verified is not None:
-            verified = verified and gui_verified
-        return WorkflowResult(
-            success=verified,
-            item_id=item_id,
-            summary=f"{source}->{target} (cli={actual}, gui={gui_verified})",
-            data={"from": source, "to": target, "cli": actual, "gui_verified": gui_verified, "verified": verified},
         )
 
     def dismiss_menus(self):

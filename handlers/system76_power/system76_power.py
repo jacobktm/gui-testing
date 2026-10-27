@@ -382,16 +382,20 @@ class System76Power:
             rc = result.get('returncode')
             print(f"    rc={rc}", flush=True)
             if rc in (0, None):
-                # Wait briefly to see if reboot actually happens.
-                time.sleep(5)
-                if self._reboot_marker is not None and not self._reboot_marker.exists():
-                    # Marker cleared = reboot happened.
-                    print(f"  Reboot confirmed (marker cleared)", flush=True)
-                    return True
+                # Wait to see if reboot actually happens.
+                for wait in range(12):
+                    time.sleep(5)
+                    if self._reboot_marker is not None and not self._reboot_marker.exists():
+                        print(f"  Reboot confirmed (marker cleared after {(wait+1)*5}s)", flush=True)
+                        return True
                 # Marker still present - try next method.
-                print(f"  Reboot not confirmed (marker still present), trying next method...", flush=True)
-        # If none confirmed a reboot, still return True (best effort).
-        print(f"  No reboot method confirmed; proceeding anyway", flush=True)
+                print(f"  Reboot not confirmed (marker still present after 60s), trying next method...", flush=True)
+        # If none confirmed a reboot, force it.
+        print(f"  No reboot method confirmed; forcing reboot via sysrq", flush=True)
+        try:
+            self._run(['sudo', 'sh', '-c', 'echo b > /proc/sysrq-trigger'], check=False, timeout=10)
+        except Exception:
+            pass
         return True
 
     def wait_for_boot(self, timeout: float = 600.0) -> bool:

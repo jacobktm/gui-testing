@@ -77,73 +77,75 @@ class System76PowerCLIWorkflow(Workflow):
         the ordered transition sequence.  If already in integrated, this
         is a no-op that returns success.
         """
-        handler = System76Power(
-            test_id="system76_power.cli.graphics",
-            item_id=item_id,
-            phase="action",
-            artifacts=self.artifacts,
-        )
-        switchable = System76Power.load_switchable_state()
-        if switchable is None:
-            switchable = handler.switchable()
-            System76Power.save_switchable_state(switchable)
-        if switchable != "switchable":
-            return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
+        try:
+            handler = System76Power(
+                test_id="system76_power.cli.graphics",
+                item_id=item_id,
+                phase="action",
+                artifacts=self.artifacts,
+            )
+            switchable = System76Power.load_switchable_state()
+            if switchable is None:
+                switchable = handler.switchable()
+                System76Power.save_switchable_state(switchable)
+            if switchable != "switchable":
+                return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
-        current = handler.get_graphics_mode()
-        print(f"transition_to_integrated: current mode = {current!r}", flush=True)
+            current = handler.get_graphics_mode()
+            print(f"transition_to_integrated: current mode = {current!r}", flush=True)
 
-        if current == "integrated":
-            print("  Already in integrated mode, no transition needed.", flush=True)
-            return WorkflowResult(success=True, item_id=item_id, summary="already integrated", data={"from": current, "to": "integrated", "actual": current, "verified": True})
+            if current == "integrated":
+                print("  Already in integrated mode, no transition needed.", flush=True)
+                return WorkflowResult(success=True, item_id=item_id, summary="already integrated", data={"from": current, "to": "integrated", "actual": current, "verified": True})
 
-        # Switch to integrated.
-        result = handler._run(['system76-power', 'graphics', 'integrated'], check=False)
-        logged = (result.get('stdout') or '').strip()
-        print(f"  system76-power graphics integrated: rc={result.get('returncode')} output={logged!r}", flush=True)
-        if result.get('returncode') not in (0, None):
-            return WorkflowResult(success=False, item_id=item_id, summary=f"switch to integrated failed: {result.get('stderr', '')}", data={"from": current, "to": "integrated", "actual": current, "verified": False})
+            # Switch to integrated.
+            result = handler._run(['system76-power', 'graphics', 'integrated'], check=False)
+            logged = (result.get('stdout') or '').strip()
+            print(f"  system76-power graphics integrated: rc={result.get('returncode')} output={logged!r}", flush=True)
+            if result.get('returncode') not in (0, None):
+                return WorkflowResult(success=False, item_id=item_id, summary=f"switch to integrated failed: {result.get('stderr', '')}", data={"from": current, "to": "integrated", "actual": current, "verified": False})
 
-        # Verify the mode was actually set (before reboot).
-        after_set = handler.get_graphics_mode()
-        print(f"  after set (before reboot): mode = {after_set!r}", flush=True)
+            self.persist_state(item_id, "state", {
+                "kind": "graphics_transition",
+                "phase": "rebooting",
+                "source": current,
+                "target": "integrated",
+                "current": "integrated",
+            })
+            handler.setup_autologin()
+            handler.reboot()
+            handler.wait_for_boot()
+            current = handler.get_graphics_mode()
+            verified = (current == "integrated")
+            print(f"  After reboot: mode = {current!r}, verified = {verified}", flush=True)
 
-        self.persist_state(item_id, "state", {
-            "kind": "graphics_transition",
-            "phase": "rebooting",
-            "source": current,
-            "target": "integrated",
-            "current": "integrated",
-        })
-        handler.setup_autologin()
-        handler.reboot()
-        handler.wait_for_boot()
-        current = handler.get_graphics_mode()
-        verified = (current == "integrated")
-        print(f"  After reboot: mode = {current!r}, verified = {verified}", flush=True)
+            self.persist_state(item_id, "state", {
+                "kind": "graphics_transition",
+                "phase": "done",
+                "source": current,
+                "target": "integrated",
+                "current": current,
+                "results": [{"from": current, "to": "integrated", "actual": current, "verified": verified}],
+                "completed": 1,
+            })
 
-        self.persist_state(item_id, "state", {
-            "kind": "graphics_transition",
-            "phase": "done",
-            "source": current,
-            "target": "integrated",
-            "current": current,
-            "results": [{"from": current, "to": "integrated", "actual": current, "verified": verified}],
-            "completed": 1,
-        })
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "action", f"transition -> {current} to integrated (verified={verified})\n", step="transition")
+                except Exception:
+                    pass
 
-        if self.artifacts is not None and item_id:
-            try:
-                self.artifacts.save_text(item_id, "action", f"transition -> {current} to integrated (verified={verified})\n", step="transition")
-            except Exception:
-                pass
-
-        return WorkflowResult(
-            success=verified,
-            item_id=item_id,
-            summary=f"to_integrated (actual: {current}, verified={verified})",
-            data={"from": current, "to": "integrated", "actual": current, "verified": verified},
-        )
+            return WorkflowResult(
+                success=verified,
+                item_id=item_id,
+                summary=f"to_integrated (actual: {current}, verified={verified})",
+                data={"from": current, "to": "integrated", "actual": current, "verified": verified},
+            )
+        except Exception as e:
+            import traceback
+            print(f"  EXCEPTION in transition_to_integrated: {e}", flush=True)
+            traceback.print_exc()
+            return WorkflowResult(success=False, item_id=item_id, summary=f"exception: {e}", data={"error": str(e)})
 
     def get_transition_order(self, item_id: str = "cli.graphics_transitions") -> list[tuple[str, str]]:
         """Determine an Eulerian circuit through all (source, target) pairs.

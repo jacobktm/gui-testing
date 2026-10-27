@@ -526,27 +526,41 @@ class System76PowerGUIWorkflow(Workflow):
             pass
         import time
         time.sleep(5)
-        try:
-            value, result = self.driver.capture_and_detect(
-                prompt,
-                expected,
-                item_id=item_id,
-                phase="detect",
-                step="power_profile",
-            )
-        except Exception as exc:
-            return WorkflowResult(
-                success=False, item_id=item_id, summary=f"detect failed: {exc}"
-            )
-
-        # Click center to dismiss screenshot notification, then wait.
-        try:
-            self.driver.go_to((0.5, 0.5))
-            self.driver.click_at((0.5, 0.5))
-        except Exception:
-            pass
-        import time as _t
-        _t.sleep(5)
+        # Try detection up to 2 times.
+        value = None
+        result = None
+        for attempt in range(2):
+            try:
+                value, result = self.driver.capture_and_detect(
+                    prompt,
+                    expected,
+                    item_id=item_id,
+                    phase="detect",
+                    step="power_profile",
+                )
+            except Exception as exc:
+                return WorkflowResult(
+                    success=False, item_id=item_id, summary=f"detect failed: {exc}"
+                )
+            # Click center to dismiss screenshot notification, then wait.
+            try:
+                self.driver.go_to((0.5, 0.5))
+                self.driver.click_at((0.5, 0.5))
+            except Exception:
+                pass
+            import time as _t
+            _t.sleep(5)
+            # If detected value matches a known profile, accept it.
+            if value and value.lower() in {e.lower() for e in expected}:
+                break
+            # Otherwise retry after re-opening settings.
+            if attempt == 0:
+                try:
+                    self.open_power_settings(os_id)
+                except Exception:
+                    pass
+                import time as _t2
+                _t2.sleep(3)
 
         if self.artifacts is not None and item_id:
             try:

@@ -647,7 +647,7 @@ class System76PowerCLIWorkflow(Workflow):
         )
         handler.switch_perf_profile(target)
         import time
-        time.sleep(3)
+        time.sleep(5)
         # Dismiss pop-ups.
         try:
             from ...dotool import send_keys

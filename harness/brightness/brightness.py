@@ -67,8 +67,9 @@ def get_backlight() -> Optional[Path]:
 def _parse_system76_power_brightness() -> tuple[Optional[int], Optional[int]]:
     """Parse brightness from ``system76-power profile`` output.
 
-    Returns (current, max) or (None, None) if parsing fails.
-    Output format: "Backlight <device>: <current>/<max> = <percent>%"
+    Returns (current, max) or (None, None) if no Backlight line is present
+    or parsing fails.  If system76-power succeeds but has no Backlight line,
+    it means there is no display brightness control by system76-power.
     """
     try:
         import subprocess
@@ -78,9 +79,12 @@ def _parse_system76_power_brightness() -> tuple[Optional[int], Optional[int]]:
         )
         if result.returncode != 0:
             return None, None
+        # If the command succeeds, look for a Backlight line.
+        found_backlight_line = False
         for line in result.stdout.splitlines():
             line = line.strip()
             if line.lower().startswith("backlight "):
+                found_backlight_line = True
                 # "Backlight acpi_video0: 5/19 = 26%"
                 # or "Backlight nvidia_wmi_ec_backlight: 255/255 = 100%"
                 if ":" in line:
@@ -91,6 +95,9 @@ def _parse_system76_power_brightness() -> tuple[Optional[int], Optional[int]]:
                         frac = parts[0]  # "5/19"
                         cur_str, max_str = frac.split("/", 1)
                         return int(cur_str), int(max_str)
+        # Command succeeded but no Backlight line → no brightness control.
+        if found_backlight_line is False and result.stdout.strip():
+            return None, None
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     return None, None
@@ -99,12 +106,34 @@ def _parse_system76_power_brightness() -> tuple[Optional[int], Optional[int]]:
 def get_brightness(backlight: Optional[Path] = None) -> Optional[int]:
     """Read the current brightness value.
 
-    Tries ``system76-power profile`` first (works on all systems),
-    falls back to sysfs ``actual_brightness`` / ``brightness``.
+    Uses ``system76-power profile`` output.  If system76-power succeeds
+    but has no Backlight line, there is no display brightness control and
+    None is returned.  Falls back to sysfs only if the CLI command fails.
     """
-    cur, _ = _parse_system76_power_brightness()
+    cur, mx = _parse_system76_power_brightness()
+    # If system76-power gave us a value, use it.
     if cur is not None:
         return cur
+    # If system76-power succeeded but had no backlight line, don't fall
+    # back to sysfs (no brightness control by system76-power).
+    # We detect this by checking if the command succeeded at all.
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["system76-power", "profile"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Command succeeded — if no backlight line, no brightness control.
+            has_backlight = any(
+                line.strip().lower().startswith("backlight ")
+                for line in result.stdout.splitlines()
+            )
+            if not has_backlight:
+                return None
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # Fall back to sysfs (CLI unavailable).
     bl = backlight or get_backlight()
     if bl is None:
         return None
@@ -119,12 +148,28 @@ def get_brightness(backlight: Optional[Path] = None) -> Optional[int]:
 def get_max_brightness(backlight: Optional[Path] = None) -> Optional[int]:
     """Read the maximum brightness value.
 
-    Tries ``system76-power profile`` first (works on all systems),
-    falls back to sysfs ``max_brightness``.
+    Uses ``system76-power profile`` output.  If system76-power succeeds
+    but has no Backlight line, returns None (no brightness control).
+    Falls back to sysfs only if the CLI command fails.
     """
     _, mx = _parse_system76_power_brightness()
     if mx is not None:
         return mx
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["system76-power", "profile"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            has_backlight = any(
+                line.strip().lower().startswith("backlight ")
+                for line in result.stdout.splitlines()
+            )
+            if not has_backlight:
+                return None
+    except (OSError, subprocess.SubprocessError):
+        pass
     bl = backlight or get_backlight()
     if bl is None:
         return None

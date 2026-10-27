@@ -496,6 +496,23 @@ class System76PowerCLIWorkflow(Workflow):
         # Load persisted state.
         state = self.load_persisted_state(item_id, phase="state")
         log(f"[brightness_reboot] loaded state: {state}")
+        if state is None and self.artifacts is not None:
+            try:
+                sd = self.artifacts.phase_dir(item_id, "state", create=False)
+                log(f"[brightness_reboot] state dir on resume: {sd} exists={sd.exists()}")
+                if sd.exists():
+                    log(f"[brightness_reboot] state files on resume: {list(sd.iterdir())}")
+            except Exception as e:
+                log(f"[brightness_reboot] state dir check on resume failed: {e}")
+        # Fallback: read from /tmp marker
+        if state is None:
+            try:
+                marker_val = Path("/tmp/gui-testing-brightness-reboot-marker").read_text().strip()
+                log(f"[brightness_reboot] /tmp marker value: {marker_val}")
+                state = {"phase": "rebooting", "settled": int(marker_val)}
+                log(f"[brightness_reboot] using marker fallback state: {state}")
+            except Exception as e:
+                log(f"[brightness_reboot] marker fallback failed: {e}")
 
         # Already completed.
         if isinstance(state, dict) and state.get("phase") == "done":
@@ -592,11 +609,31 @@ class System76PowerCLIWorkflow(Workflow):
             boot_id_before = None
 
         self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current, "profile": "performance"})
+        # Flush to disk before reboot.
+        import os as _os
+        try:
+            _os.sync()
+        except Exception:
+            pass
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "setup", f"profile=performance brightness={current}/{max_b}\nreadings={readings_before}\n", step="before_reboot")
             except Exception as e:
                 log(f"[brightness_reboot] save_text failed: {e}")
+        # Flush again.
+        try:
+            _os.sync()
+        except Exception:
+            pass
+        # Debug: list state files.
+        if self.artifacts is not None:
+            try:
+                sd = self.artifacts.phase_dir(item_id, "state", create=False)
+                log(f"[brightness_reboot] state dir: {sd} exists={sd.exists()}")
+                if sd.exists():
+                    log(f"[brightness_reboot] state files: {list(sd.iterdir())}")
+            except Exception as e:
+                log(f"[brightness_reboot] state dir check failed: {e}")
         try:
             Path("/tmp/gui-testing-brightness-reboot-marker").write_text("rebooting", encoding="utf-8")
         except Exception:

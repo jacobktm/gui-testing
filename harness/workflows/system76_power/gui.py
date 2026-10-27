@@ -86,14 +86,7 @@ class System76PowerGUIWorkflow(Workflow):
                 time.sleep(1)
             # Dismiss any pop-up/notification.
             self.dismiss_menus()
-            # Click center screen to close lingering dialogs.
-            try:
-                self.driver.go_to((0.5, 0.5))
-                self.driver.click_at((0.5, 0.5))
-            except Exception:
-                pass
-            time.sleep(1)
-            # Reclick center before screenshots (re-open if needed).
+            # Click center screen once to dismiss pop-ups.
             try:
                 self.driver.go_to((0.5, 0.5))
                 self.driver.click_at((0.5, 0.5))

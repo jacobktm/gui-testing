@@ -244,10 +244,15 @@ class RunArtifacts:
             suffix=source.suffix or ".png",
         )
         if source.resolve() != destination.resolve():
-            if move:
-                shutil.move(str(source), str(destination))
+            if source.is_file():
+                if move:
+                    shutil.move(str(source), str(destination))
+                else:
+                    shutil.copy2(source, destination)
             else:
-                shutil.copy2(source, destination)
+                # Source missing (already moved?) — skip.
+                import sys
+                print(f"[save_screenshot] source missing: {source}", file=sys.stderr, flush=True)
         return self._record(
             item_id,
             phase,

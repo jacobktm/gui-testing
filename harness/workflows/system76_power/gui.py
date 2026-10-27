@@ -16,123 +16,23 @@ class System76PowerGUIWorkflow(Workflow):
         self.brightness = BrightnessHandler()
 
     def open_power_settings(self, os_id: str) -> WorkflowResult:
-        """Open power settings via Ollama-detected click positions."""
+        """Open power settings via adjusted hardcoded click positions."""
         import sys
         import time
+        _src = COORD_SOURCE.get(os_id, (1920, 1080))
         try:
+            # Click the system tray / battery icon.
+            self.driver.click_at(adjust_coords(Coords.OPEN, _src))
             if os_id == "pop-22.04":
-                # Pop 22.04: click system tray region, then battery icon in popup.
-                coords = self.driver.detect_all_coordinates(
-                    ["battery", "network", "sound", "power"],
-                    item_id="gui.power_settings_open",
-                    phase="detect",
-                    step="open_coords",
-                )
-                # Click the system tray area (try battery, network, or sound).
-                clicked = False
-                for label in ("battery", "power", "network", "sound"):
-                    if label in coords:
-                        try:
-                            self.driver.click_at(coords[label])
-                            clicked = True
-                            print(f"[open_power_settings] clicked {label} at {coords[label]}", file=sys.stderr, flush=True)
-                            break
-                        except Exception as e:
-                            print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
-                if not clicked:
-                    # Fallback to hardcoded.
-                    _src = COORD_SOURCE.get(os_id, (1920, 1080))
-                    self.driver.click_at(adjust_coords(Coords.OPEN, _src))
                 time.sleep(2)
-                # Now click battery icon in the popup menu.
-                coords2 = self.driver.detect_all_coordinates(
-                    ["battery", "power", "power settings"],
-                    item_id="gui.power_settings_open",
-                    phase="detect",
-                    step="popup_coords",
-                )
-                for label in ("battery", "power", "power settings"):
-                    if label in coords2:
-                        try:
-                            self.driver.click_at(coords2[label])
-                            print(f"[open_power_settings] clicked popup {label} at {coords2[label]}", file=sys.stderr, flush=True)
-                            break
-                        except Exception as e:
-                            print(f"[open_power_settings] click popup {label} failed: {e}", file=sys.stderr, flush=True)
-                else:
-                    # Fallback to hardcoded extra click.
-                    try:
-                        extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
-                        _src = COORD_SOURCE.get(os_id, (1920, 1080))
-                        self.driver.click_at(adjust_coords(extra, _src))
-                    except Exception:
-                        pass
+                extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
+                self.driver.click_at(adjust_coords(extra, _src))
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                coords = self.driver.detect_all_coordinates(
-                    ["battery", "network", "sound", "power"],
-                    item_id="gui.power_settings_open",
-                    phase="detect",
-                    step="open_coords",
-                )
-                clicked = False
-                for label in ("battery", "power", "network", "sound"):
-                    if label in coords:
-                        try:
-                            self.driver.click_at(coords[label])
-                            clicked = True
-                            print(f"[open_power_settings] clicked {label} at {coords[label]}", file=sys.stderr, flush=True)
-                            break
-                        except Exception as e:
-                            print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
-                if not clicked:
-                    _src = COORD_SOURCE.get(os_id, (1920, 1080))
-                    self.driver.click_at(adjust_coords(Coords.OPEN, _src))
                 time.sleep(2)
-                coords2 = self.driver.detect_all_coordinates(
-                    ["battery", "power", "power settings"],
-                    item_id="gui.power_settings_open",
-                    phase="detect",
-                    step="popup_coords",
-                )
-                for label in ("battery", "power", "power settings"):
-                    if label in coords2:
-                        try:
-                            self.driver.click_at(coords2[label])
-                            print(f"[open_power_settings] clicked popup {label} at {coords2[label]}", file=sys.stderr, flush=True)
-                            break
-                        except Exception as e:
-                            print(f"[open_power_settings] click popup {label} failed: {e}", file=sys.stderr, flush=True)
-                else:
-                    try:
-                        extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
-                        if extra:
-                            _src = COORD_SOURCE.get(os_id, (1920, 1080))
-                            self.driver.click_at(adjust_coords(extra, _src))
-                    except Exception:
-                        pass
-            else:
-                # Pop!_OS 24.04 (COSMIC): click battery icon in panel.
-                coords = self.driver.detect_all_coordinates(
-                    ["battery", "power", "battery icon"],
-                    references={"battery": (0.955, 0.13), "power": (0.955, 0.014)},
-                    item_id="gui.power_settings_open",
-                    phase="detect",
-                    step="open_coords",
-                )
-                clicked = False
-                for label in ("battery", "battery icon", "power"):
-                    if label in coords:
-                        try:
-                            self.driver.click_at(coords[label])
-                            clicked = True
-                            print(f"[open_power_settings] clicked {label} at {coords[label]}", file=sys.stderr, flush=True)
-                            break
-                        except Exception as e:
-                            print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
-                if not clicked:
-                    # Fallback to hardcoded.
-                    _src = COORD_SOURCE.get(os_id, (1920, 1080))
-                    self.driver.click_at(adjust_coords(Coords.OPEN, _src))
+                extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
+                if extra:
+                    self.driver.click_at(adjust_coords(extra, _src))
+            # Pop 24 (COSMIC): single click on battery icon opens settings.
             time.sleep(3)
         except Exception as exc:
             print(f"[open_power_settings] FAILED: {exc}", file=sys.stderr, flush=True)
@@ -168,38 +68,6 @@ class System76PowerGUIWorkflow(Workflow):
             pass
 
 
-    def _get_profile_coords_ollama(self, profile: str, os_id: str, item_id: str = None) -> tuple[float, float] | None:
-        """Try to find profile button coordinates via Ollama. Falls back to None."""
-        label_map = {
-            "performance": "High Performance",
-            "balanced": "Balanced",
-            "battery": "Battery",
-        }
-        label = label_map.get(profile, profile)
-        # Get hardcoded reference for this profile.
-        if os_id == "pop-22.04":
-            ref = Coords.POP22_PROFILES.get(profile)
-        elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-            ref = Coords.UBUNTU_26.get(f"profile_{profile}")
-        else:
-            ref = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
-        try:
-            coords = self.driver.detect_coordinates(
-                label,
-                reference=ref,
-                item_id=item_id,
-                phase="detect",
-                step="profile_coords",
-            )
-            if coords is not None:
-                import sys
-                print(f"[ollama_coords] {profile} -> {coords}", file=sys.stderr, flush=True)
-                return coords
-        except Exception as e:
-            import sys
-            print(f"[ollama_coords] failed for {profile}: {e}", file=sys.stderr, flush=True)
-        return None
-
     def set_power_profile_gui(self, profile: str, os_id: str, item_id: str = "gui.power_profile_switch") -> WorkflowResult:
         try:
             self.open_power_settings(os_id)
@@ -214,21 +82,6 @@ class System76PowerGUIWorkflow(Workflow):
             # Adjust for display aspect ratio.
             src = COORD_SOURCE.get(os_id, (1920, 1080))
             coords = adjust_coords(raw_coords, src) if raw_coords else None
-            # Try Ollama coordinate detection first, but validate against hardcoded.
-            ollama_coords = self._get_profile_coords_ollama(profile, os_id, item_id=item_id)
-            if ollama_coords is not None:
-                if coords is not None:
-                    dx = abs(ollama_coords[0] - coords[0])
-                    dy = abs(ollama_coords[1] - coords[1])
-                    if dx <= 0.15 and dy <= 0.15:
-                        coords = ollama_coords
-                        import sys
-                        print(f"[set_power_profile_gui] using Ollama coords {ollama_coords}", file=sys.stderr, flush=True)
-                    else:
-                        import sys
-                        print(f"[set_power_profile_gui] Ollama coords {ollama_coords} too far from hardcoded {coords}, using hardcoded", file=sys.stderr, flush=True)
-                else:
-                    coords = ollama_coords
             if coords:
                 import sys
                 print(f"[set_power_profile_gui] clicking profile {profile} at {coords}", file=sys.stderr, flush=True)
@@ -634,7 +487,7 @@ class System76PowerGUIWorkflow(Workflow):
             )
 
         # Wait for screenshot notification to disappear (15s).
-        time.sleep(15)
+        time.sleep(5)
 
         if self.artifacts is not None and item_id:
             try:
@@ -704,7 +557,7 @@ class System76PowerGUIWorkflow(Workflow):
 
         # Wait for screenshot notification to disappear (15s).
         import time as _t
-        _t.sleep(15)
+        _t.sleep(5)
 
         if self.artifacts is not None and item_id:
             try:

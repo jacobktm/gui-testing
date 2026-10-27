@@ -433,7 +433,7 @@ class System76Power:
     def wait_for_boot(self, timeout: float = 600.0) -> bool:
         # Give the system time to actually start rebooting before polling.
         print("Waiting for system to reboot...", flush=True)
-        time.sleep(15)
+        time.sleep(5)
         deadline = time.time() + timeout
         elapsed = 0
         boot_id_before = getattr(self, "_boot_id_before", None)

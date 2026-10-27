@@ -628,11 +628,47 @@ class System76PowerCLIWorkflow(Workflow):
             return WorkflowResult(success=False, item_id=item_id, summary=f"detect failed: {res.summary}", data=res.data)
         detected = (res.data or {}).get("profile", "").lower()
         verified = (detected == target.lower())
+        # Persist result for aggregation.
+        self.persist_state(item_id, "state", {
+            "kind": "profile_reflected",
+            "target": target,
+            "detected": detected,
+            "verified": verified,
+        })
         return WorkflowResult(
             success=verified,
             item_id=item_id,
             summary=f"cli={target} gui={detected} verified={verified}",
             data={"target": target, "detected": detected, "verified": verified},
+        )
+
+    def verify_all_cli_profiles_reflected_in_extension(self, item_id: str = "cli.profile_reflected", os_id: str = None) -> WorkflowResult:
+        """Verify that power profile changes from CLI are reflected in the extension.
+
+        Runs all 3 profile checks (performance, balanced, battery) and returns
+        overall success.
+        """
+        import os as _os
+        if os_id is None:
+            os_id = _os.environ.get("TEST_OS_ID") or _os.environ.get("OS_ID") or "pop-24.04"
+
+        targets = ["performance", "balanced", "battery"]
+        results = []
+        all_ok = True
+        for target in targets:
+            res = self.verify_cli_profile_reflected_in_extension(target, os_id=os_id, item_id=f"{item_id}.{target}")
+            verified = res.success
+            if not verified:
+                all_ok = False
+            results.append({"target": target, "verified": verified, "summary": res.summary})
+
+        failed = [r for r in results if not r["verified"]]
+        summary = f"profile_reflected: {len(results) - len(failed)}/{len(results)} passed"
+        return WorkflowResult(
+            success=all_ok,
+            item_id=item_id,
+            summary=summary,
+            data={"results": results},
         )
 
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:

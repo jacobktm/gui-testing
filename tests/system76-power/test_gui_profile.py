@@ -165,10 +165,11 @@ class TestSystem76PowerGUI:
 
         import time
         time.sleep(3)
-        # Dismiss any pop-ups and click center before detection.
+        # Dismiss any pop-ups by clicking center.
         try:
-            from harness.dotool import send_keys
-            send_keys("key esc\n")
+            from harness.dotool import mouseto, click
+            mouseto((0.5, 0.5))
+            click()
         except Exception:
             pass
         time.sleep(1)

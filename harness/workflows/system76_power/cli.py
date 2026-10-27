@@ -383,8 +383,9 @@ class System76PowerCLIWorkflow(Workflow):
                         else:
                             gui_verified = False
                         try:
-                            from ...dotool import send_keys
-                            send_keys("key esc\nkey esc\n")
+                            from ...gui import GuiDriver
+                            d = GuiDriver(artifacts=self.artifacts)
+                            d.click_at((0.5, 0.5))
                         except Exception:
                             pass
                     except Exception:
@@ -648,10 +649,11 @@ class System76PowerCLIWorkflow(Workflow):
         handler.switch_perf_profile(target)
         import time
         time.sleep(12)
-        # Dismiss pop-ups.
+        # Dismiss pop-ups by clicking center.
         try:
-            from ...dotool import send_keys
-            send_keys("key esc\n")
+            from ...gui import GuiDriver
+            d = GuiDriver(artifacts=self.artifacts)
+            d.click_at((0.5, 0.5))
         except Exception:
             pass
         time.sleep(1)

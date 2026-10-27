@@ -3,7 +3,6 @@ from __future__ import annotations
 from harness.brightness import BrightnessHandler
 from handlers.system76_power import System76Power
 
-from ...dotool import click, send_keys
 from ...gui import Coords, GuiDriver
 from ...gui.coords import adjust_coords, COORD_SOURCE
 from ..base import Workflow, WorkflowResult
@@ -100,20 +99,17 @@ class System76PowerGUIWorkflow(Workflow):
         )
 
     def dismiss_menus(self):
-        # Try ESC keys (may not work on COSMIC, but harmless)
-        try:
-            send_keys("key esc\nkey esc\n")
-        except Exception:
-            pass
         # Click at center to dismiss lingering dialogs/pop-ups.
+        # ESC doesn't work on COSMIC; center click always works.
         # Do NOT click at (0.1, 0.1) — that activates UI elements.
         try:
             self.driver.click_at((0.5, 0.5))
         except Exception:
             pass
-        # Extra ESC for safety
+        import time
+        time.sleep(0.5)
         try:
-            send_keys("key esc\n")
+            self.driver.click_at((0.5, 0.5))
         except Exception:
             pass
 
@@ -519,10 +515,9 @@ class System76PowerGUIWorkflow(Workflow):
                 "'High Performance', 'Balanced', 'Battery', or 'Battery Saver'."
             )
 
-        # Dismiss any open panels first, then open power settings fresh.
+        # Dismiss any open panels first by clicking center.
         try:
-            from ...dotool import send_keys
-            send_keys("key esc\n")
+            self.driver.click_at((0.5, 0.5))
         except Exception:
             pass
         import time

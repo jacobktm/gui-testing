@@ -142,25 +142,11 @@ if [ ! -S "$XDG_RUNTIME_DIR/${{WAYLAND_DISPLAY:-wayland-0}}" ] && [ -z "${{DISPL
     exit 1
 fi
 
-# Try to open a terminal window to show progress (best-effort).
-# Use a .desktop file + gtk-launch, which works on all DEs including COSMIC.
-DESKTOP_FILE="$HOME/.local/share/applications/gui-testing-watch.desktop"
-mkdir -p "$HOME/.local/share/applications"
-cat > "$DESKTOP_FILE" << DESKTOP_EOF
-[Desktop Entry]
-Type=Application
-Name=GUI Test Progress
-Exec=sh -c "tail -n +1 -f $LOG_FILE"
-Terminal=true
-DESKTOP_EOF
-update-desktop-database "$HOME/.local/share/applications/" >/dev/null 2>&1
-if command -v gtk-launch >/dev/null 2>&1; then
-    gtk-launch gui-testing-watch >/dev/null 2>&1 &
-elif command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$DESKTOP_FILE" >/dev/null 2>&1 &
-fi
+# Do NOT open a terminal window during the run — it can cover the screen
+# and interfere with GUI automation (screenshots, clicks).
+# Progress is logged to $LOG_FILE and a desktop notification is shown.
 
-# Also show a desktop notification with the log path (best-effort)
+# Show a desktop notification with the log path (best-effort)
 if command -v notify-send >/dev/null 2>&1; then
     notify-send "GUI Testing" "Resuming pytest run.\nLog: $LOG_FILE" >/dev/null 2>&1 &
 fi

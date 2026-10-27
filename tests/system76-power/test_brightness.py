@@ -13,9 +13,12 @@ class TestBrightness:
         max_b = b.maximum()
         if max_b is None:
             pytest.skip("no backlight")
+        # Start from performance so the switch to balanced triggers the drop.
+        s.switch_perf_profile("performance")
+        import time; time.sleep(1)
         b.brightness_up_to_max()
         s.switch_perf_profile("balanced")
-        import time; time.sleep(2)
+        time.sleep(2)
         cur = b.current()
         if artifacts:
             try:
@@ -32,9 +35,12 @@ class TestBrightness:
         max_b = b.maximum()
         if max_b is None:
             pytest.skip("no backlight")
+        # Start from performance so the switch to battery triggers the drop.
+        s.switch_perf_profile("performance")
+        import time; time.sleep(1)
         b.brightness_up_to_max()
         s.switch_perf_profile("battery")
-        import time; time.sleep(2)
+        time.sleep(2)
         cur = b.current()
         if artifacts:
             try:
@@ -50,10 +56,13 @@ class TestBrightness:
         max_b = b.maximum()
         if max_b is None:
             pytest.skip("no backlight")
+        # Start from performance so switching to balanced is a real transition.
+        s.switch_perf_profile("performance")
+        import time; time.sleep(1)
         b.brightness_down_to_min()
         before = b.current()
         s.switch_perf_profile("balanced")
-        import time; time.sleep(2)
+        time.sleep(2)
         cur = b.current()
         if artifacts:
             try:

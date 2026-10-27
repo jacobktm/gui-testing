@@ -487,13 +487,16 @@ class System76PowerCLIWorkflow(Workflow):
         )
 
         marker = Path("/tmp/gui-testing-brightness-reboot-marker")
-        # If marker exists, we haven't rebooted yet (first invocation).
-        # If marker is gone, we've rebooted (resumed invocation).
-        already_rebooted = not marker.exists()
-
         progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
 
-        if not already_rebooted and not progress.get("done"):
+        # Determine if we've already rebooted:
+        # 1. If persisted state has phase "after" or "done" → rebooted
+        # 2. If marker is gone (tmpfs cleared) → rebooted
+        # 3. Otherwise → first invocation
+        phase = progress.get("phase", "before")
+        already_rebooted = (phase in ("after", "done")) or (not marker.exists() and bool(progress))
+
+        if phase == "before" and not already_rebooted:
             # First invocation: save brightness, create marker, reboot.
             before = get_brightness()
             if before is None:
@@ -516,7 +519,7 @@ class System76PowerCLIWorkflow(Workflow):
             handler.wait_for_boot()
             return WorkflowResult(success=True, item_id=item_id, summary="saved=" + str(before) + ", rebooting")
 
-        # Resumed invocation (marker gone = reboot happened): compare.
+        # Resumed invocation (marker gone or phase=after = reboot happened): compare.
         before = progress.get("before")
         if before is None:
             # Try reading from marker's persisted state

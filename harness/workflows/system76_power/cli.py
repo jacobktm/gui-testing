@@ -473,6 +473,7 @@ class System76PowerCLIWorkflow(Workflow):
     def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:
         """Verify screen brightness is preserved across a system reboot."""
         import sys
+        from pathlib import Path
         from harness.brightness import get_brightness, BrightnessHandler
 
         handler = System76Power(

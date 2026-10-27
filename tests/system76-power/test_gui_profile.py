@@ -27,6 +27,15 @@ class TestSystem76PowerGUI:
             capture(shot_path)
         except Exception:
             pass  # Permission dialog may block; that's expected on first run
+        # Wait for permission dialog, then try to dismiss/allow.
+        import time
+        time.sleep(3)
+        try:
+            from harness.dotool import send_keys
+            send_keys("key return")
+        except Exception:
+            pass
+        time.sleep(2)
 
     def test_open_power_settings(self, artifacts):
         wf = System76PowerGUIWorkflow(artifacts=artifacts)

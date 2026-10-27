@@ -346,6 +346,15 @@ class System76PowerGUIWorkflow(Workflow):
                 "'battery', 'balanced', or 'performance'."
             )
 
+        # Dismiss any lingering pop-ups before capturing.
+        try:
+            self.dismiss_menus()
+            self.driver.go_to((0.5, 0.5))
+            self.driver.click_at((0.5, 0.5))
+        except Exception:
+            pass
+        import time
+        time.sleep(1)
         try:
             value, result = self.driver.capture_and_detect(
                 prompt,

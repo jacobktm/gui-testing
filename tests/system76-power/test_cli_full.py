@@ -54,6 +54,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_to_integrated(item_id="cli.graphics_transition.to_integrated")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
 
     @pytest.mark.reboot
@@ -62,6 +64,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "nvidia", item_id="cli.graphics_transition.integrated_to_nvidia")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -73,6 +77,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "hybrid", item_id="cli.graphics_transition.nvidia_to_hybrid")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -84,6 +90,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "compute", item_id="cli.graphics_transition.hybrid_to_compute")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -95,6 +103,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "integrated", item_id="cli.graphics_transition.compute_to_integrated")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -106,6 +116,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "hybrid", item_id="cli.graphics_transition.integrated_to_hybrid")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -117,6 +129,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "nvidia", item_id="cli.graphics_transition.hybrid_to_nvidia")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -128,6 +142,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "compute", item_id="cli.graphics_transition.nvidia_to_compute")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -139,6 +155,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "hybrid", item_id="cli.graphics_transition.compute_to_hybrid")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -150,6 +168,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "integrated", item_id="cli.graphics_transition.hybrid_to_integrated")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -161,6 +181,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "compute", item_id="cli.graphics_transition.integrated_to_compute")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -172,6 +194,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "nvidia", item_id="cli.graphics_transition.compute_to_nvidia")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass
@@ -183,6 +207,8 @@ class TestSystem76PowerCLIFull:
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "integrated", item_id="cli.graphics_transition.nvidia_to_integrated")
+        if (res.data or {}).get("skipped"):
+            pytest.skip("not switchable graphics")
         assert res.success, res.summary
         data = res.data or {}
         # CLI verification must pass

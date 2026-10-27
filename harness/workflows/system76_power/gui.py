@@ -107,7 +107,7 @@ class System76PowerGUIWorkflow(Workflow):
         except Exception:
             pass
         import time
-        time.sleep(0.5)
+        time.sleep(1.0)
         try:
             self.driver.click_at((0.5, 0.5))
         except Exception:

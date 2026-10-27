@@ -471,7 +471,12 @@ class System76PowerCLIWorkflow(Workflow):
         )
 
     def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:
-        """Verify screen brightness is preserved across a system reboot."""
+        """Verify screen brightness is preserved across a system reboot.
+
+        Uses persistent + ephemeral markers to track reboot state:
+        - Neither exists  -> first invocation (save brightness, create markers, reboot)
+        - Persistent exists, ephemeral gone -> rebooted (compare brightness)
+        """
         from harness.brightness import get_brightness
 
         handler = System76Power(
@@ -481,61 +486,77 @@ class System76PowerCLIWorkflow(Workflow):
             artifacts=self.artifacts,
         )
 
-        progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
-        print(f"  [brightness_reboot] item_id={item_id} progress={progress}", flush=True)
+        persistent_marker = None
+        ephemeral_marker = Path("/tmp/gui-testing-brightness-reboot-marker")
+        if self.artifacts is not None:
+            persistent_marker = self.artifacts.run_dir / "brightness-reboot-marker"
 
-        # Determine if this is the first invocation or a resumed one.
-        # First invocation: no saved state (or phase not "done").
-        # Resumed invocation: state exists with a "before" value.
-        has_saved_before = isinstance(progress, dict) and progress.get("before") is not None
-        phase = progress.get("phase", "before")
-        print(f"  [brightness_reboot] phase={phase} has_saved_before={has_saved_before}", flush=True)
+        # Determine state from markers.
+        p_exists = persistent_marker is not None and persistent_marker.exists()
+        e_exists = ephemeral_marker.exists()
 
-        # Debug: show what system76-power profile returns
-        try:
-            import subprocess
-            r = subprocess.run(["system76-power", "profile"], capture_output=True, text=True, timeout=10)
-            print(f"  [brightness_reboot] system76-power profile rc={r.returncode}", flush=True)
-            for line in r.stdout.splitlines():
-                print(f"    {line}", flush=True)
-        except Exception as e:
-            print(f"  [brightness_reboot] system76-power profile failed: {e}", flush=True)
+        if p_exists and e_exists:
+            # Reboot was attempted but didn't happen. Fail, don't loop.
+            return WorkflowResult(success=False, item_id=item_id, summary="reboot did not happen (both markers present)")
 
-        if not has_saved_before:
-            # First invocation: save brightness and reboot.
+        if not p_exists and not e_exists:
+            # First invocation: save brightness, create both markers, reboot.
             before = get_brightness()
             print(f"  [brightness_reboot] first invocation, brightness={before}", flush=True)
             if before is None:
                 return WorkflowResult(success=False, item_id=item_id, summary="no backlight (system76-power profile has no Backlight line)")
-            self.persist_state(
-                item_id, "state",
-                {"kind": "brightness_restart", "before": before, "phase": "after"},
-            )
-            if self.artifacts is not None and item_id:
+            # Create persistent marker (survives reboot).
+            if persistent_marker is not None:
                 try:
-                    self.artifacts.save_text(item_id, "setup", "brightness_before=" + str(before) + "\n", step="before_reboot")
-                except Exception as e:
-                    print(f"  [brightness_reboot] save_text failed: {e}", flush=True)
+                    persistent_marker.write_text(str(before), encoding="utf-8")
+                except Exception:
+                    pass
+            # Create ephemeral marker (cleared on reboot).
+            try:
+                ephemeral_marker.write_text(str(before), encoding="utf-8")
+            except Exception:
+                pass
             handler.setup_autologin()
             handler.reboot()
             handler.wait_for_boot()
             return WorkflowResult(success=True, item_id=item_id, summary="saved=" + str(before) + ", rebooting")
 
-        # Resumed invocation: compare brightness after reboot.
-        before = progress.get("before")
+        # Resumed invocation: persistent exists, ephemeral gone = rebooted.
+        # Read saved brightness from persistent marker or persisted state.
+        before = None
+        if persistent_marker is not None and persistent_marker.exists():
+            try:
+                before = int(persistent_marker.read_text().strip())
+            except (ValueError, OSError):
+                pass
+        if before is None:
+            progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
+            before = progress.get("before")
+        if before is None:
+            return WorkflowResult(success=False, item_id=item_id, summary="could not determine before brightness")
+
         # Give daemon time to settle after boot.
         import time
         time.sleep(3)
         after = get_brightness()
         print(f"  [brightness_reboot] resumed: before={before} after={after}", flush=True)
-        if before is None or after is None:
-            return WorkflowResult(success=False, item_id=item_id, summary="before=" + str(before) + " after=" + str(after))
+        if after is None:
+            return WorkflowResult(success=False, item_id=item_id, summary="before=" + str(before) + " after=None")
 
         from harness.brightness import get_max_brightness
         max_b = get_max_brightness()
         tolerance = max(1, (max_b or 100) // 20)
         ok = abs(after - before) <= tolerance
 
+        # Clean up markers.
+        for m in (persistent_marker, ephemeral_marker):
+            try:
+                if m is not None and m.exists():
+                    m.unlink()
+            except Exception:
+                pass
+
+        # Persist final state.
         self.persist_state(
             item_id, "state",
             {"kind": "brightness_restart", "before": before, "after": after, "phase": "done"},

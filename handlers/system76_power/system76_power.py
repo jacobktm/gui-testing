@@ -372,6 +372,22 @@ class System76Power:
         except Exception:
             self._boot_id_before = None
 
+        # Create persistent + ephemeral markers (supplementary detection).
+        # Persistent: in run dir (survives reboot). Ephemeral: in /tmp (cleared).
+        self._persistent_marker = None
+        self._ephemeral_marker = Path("/tmp/gui-testing-reboot-marker")
+        if self.artifacts is not None:
+            try:
+                pm = self.artifacts.run_dir / "reboot-marker"
+                pm.write_text("reboot_pending", encoding="utf-8")
+                self._persistent_marker = pm
+            except Exception:
+                self._persistent_marker = None
+        try:
+            self._ephemeral_marker.write_text("reboot_pending", encoding="utf-8")
+        except Exception:
+            self._ephemeral_marker = None
+
         # Try each method until one actually reboots the system.
         # systemctl reboot can return 0 without rebooting on some systems
         # (e.g. blocked by inhibitor locks or confirmation dialogs).
@@ -414,27 +430,49 @@ class System76Power:
         deadline = time.time() + timeout
         elapsed = 0
         boot_id_before = getattr(self, "_boot_id_before", None)
+        persistent_marker = getattr(self, "_persistent_marker", None)
+        ephemeral_marker = getattr(self, "_ephemeral_marker", None)
+        # Also check from a previous (killed) process.
+        if persistent_marker is None and self.artifacts is not None:
+            pm = self.artifacts.run_dir / "reboot-marker"
+            if pm.exists():
+                persistent_marker = pm
+        if ephemeral_marker is None:
+            ephemeral_marker = Path("/tmp/gui-testing-reboot-marker")
+
         while time.time() < deadline:
-            # Check if boot ID changed (confirms reboot happened).
             rebooted = False
+            # Check boot_id change.
             try:
                 boot_id_after = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
                 if boot_id_before is not None and boot_id_after != boot_id_before:
                     rebooted = True
-                    print(f"  Reboot confirmed (boot ID changed)", flush=True)
             except Exception:
                 pass
+            # Check markers: persistent exists + ephemeral gone => rebooted.
+            p_exists = persistent_marker is not None and Path(persistent_marker).exists()
+            e_exists = Path(ephemeral_marker).exists() if ephemeral_marker else False
+            if p_exists and not e_exists:
+                rebooted = True
+            if rebooted:
+                print(f"  Reboot confirmed", flush=True)
+
             try:
                 state = self._run(['systemctl', 'is-system-running'], check=False)
                 status = (state.get('stdout') or '').strip() if state else ''
                 rc = state.get('returncode') if state else None
-                # Accept 'running' (rc=0) and 'degraded' (failed units but
-                # booted) so a non-critical failed unit doesn't block tests.
                 if status in ('running', 'degraded') or (rc == 0 and status):
                     if not rebooted and boot_id_before is not None:
-                        print(f"  Warning: boot ID unchanged, system may not have rebooted", flush=True)
+                        print(f"  Warning: boot ID/markers unchanged, system may not have rebooted", flush=True)
                     else:
                         print(f"  System rebooted and is {status} (after {elapsed}s)", flush=True)
+                    # Clean up markers.
+                    for m in (persistent_marker, ephemeral_marker):
+                        try:
+                            if m is not None and Path(m).exists():
+                                Path(m).unlink()
+                        except Exception:
+                            pass
                     return True
                 if status:
                     print(f"  ... {status} ({elapsed}s)", flush=True, end='\r')
@@ -443,6 +481,26 @@ class System76Power:
             time.sleep(5)
             elapsed += 5
         print(f"  Timed out after {timeout}s", flush=True)
+        return False
+
+    def did_reboot(self) -> bool:
+        """Check if a reboot occurred since the last reboot() call."""
+        persistent = None
+        if self.artifacts is not None:
+            persistent = self.artifacts.run_dir / "reboot-marker"
+        ephemeral = Path("/tmp/gui-testing-reboot-marker")
+        p_exists = persistent is not None and persistent.exists()
+        e_exists = ephemeral.exists()
+        if p_exists and not e_exists:
+            return True
+        # Fallback to boot_id.
+        try:
+            boot_id_before = getattr(self, "_boot_id_before", None)
+            boot_id_after = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+            if boot_id_before is not None and boot_id_after != boot_id_before:
+                return True
+        except Exception:
+            pass
         return False
 
     def setup_autologin(self, username: str | None = None) -> bool:

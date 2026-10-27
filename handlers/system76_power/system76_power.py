@@ -392,25 +392,32 @@ class System76Power:
         # systemctl reboot can return 0 without rebooting on some systems
         # (e.g. blocked by inhibitor locks or confirmation dialogs).
         reboot_cmds = [
-            ['systemctl', 'reboot', '-i'],              # ignore inhibitors
-            ['systemctl', 'reboot', '--no-block'],       # don't wait
-            ['systemctl', 'reboot'],                      # standard
-            ['sudo', 'systemctl', 'reboot', '-i'],
-            ['sudo', 'systemctl', 'reboot'],
-            ['sudo', 'reboot', '-f'],                   # force, bypass inhibitors
-            ['sudo', 'reboot'],
-            ['reboot', '-f'],
+            ['sudo', '-n', 'systemctl', 'reboot', '-i'],              # ignore inhibitors
+            ['sudo', '-n', 'systemctl', 'reboot', '--no-block'],       # don't wait
+            ['sudo', '-n', 'systemctl', 'reboot'],                      # standard
+            ['sudo', '-n', 'reboot', '-f'],                            # force, bypass inhibitors
+            ['sudo', '-n', 'reboot'],                                    # standard reboot
+            ['systemctl', 'reboot', '-i'],                              # polkit (no sudo)
+            ['systemctl', 'reboot'],                                     # polkit (no sudo)
+            ['reboot', '-f'],                                           # direct
         ]
         for cmd in reboot_cmds:
             print(f"  Trying reboot: {' '.join(cmd)}", flush=True)
             result = self._run(cmd, check=False, timeout=30)
             rc = result.get('returncode')
-            print(f"    rc={rc}", flush=True)
+            stderr = (result.get('stderr') or '').strip()
+            print(f"    rc={rc} stderr={stderr!r}", flush=True)
             if rc in (0, None):
                 # Wait to see if reboot actually happens.
                 for wait in range(12):
                     time.sleep(5)
+                    # Check both persistent and ephemeral markers.
+                    marker_cleared = False
                     if self._persistent_marker is not None and not self._persistent_marker.exists():
+                        marker_cleared = True
+                    if self._ephemeral_marker is not None and not self._ephemeral_marker.exists():
+                        marker_cleared = True
+                    if marker_cleared:
                         print(f"  Reboot confirmed (marker cleared after {(wait+1)*5}s)", flush=True)
                         return True
                 # Marker still present - try next method.
@@ -418,7 +425,7 @@ class System76Power:
         # If none confirmed a reboot, force it via sysrq.
         print(f"  No reboot method confirmed; forcing reboot via sysrq", flush=True)
         try:
-            self._run(['sh', '-c', 'echo b | sudo tee /proc/sysrq-trigger > /dev/null'], check=False, timeout=10)
+            self._run(['sudo', '-n', 'sh', '-c', 'echo b > /proc/sysrq-trigger'], check=False, timeout=10)
         except Exception:
             pass
         return True

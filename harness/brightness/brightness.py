@@ -382,15 +382,22 @@ class BrightnessHandler:
                 for _ in range(steps_per_press):
                     proc.stdin.write("key brightnessdown\n")
                 proc.stdin.flush()
-                time.sleep(self.delay)
+                # Longer delay for EC backlights to update.
+                time.sleep(max(self.delay, 0.3))
                 presses += 1
-                new_val = self.current()
+                # Read multiple times to get the settled value.
+                new_val = None
+                for _ in range(3):
+                    time.sleep(0.1)
+                    v = self.current()
+                    if v is not None:
+                        new_val = v
                 if new_val is None:
                     break
                 # Track actual last value for stabilization check.
                 if new_val == last_val:
                     stable_count += 1
-                    if stable_count >= 3:
+                    if stable_count >= 5:
                         break
                 else:
                     stable_count = 0

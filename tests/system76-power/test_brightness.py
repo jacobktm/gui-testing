@@ -63,6 +63,13 @@ class TestBrightness:
         s.switch_perf_profile("performance")
         import time; time.sleep(1)
         b.brightness_down_to_min()
+        import time
+        time.sleep(1)
+        # Verify true minimum: press down a few more times.
+        from harness.dotool import brightness_down
+        for _ in range(5):
+            brightness_down()
+            time.sleep(0.3)
         before = b.current()
         max_b = b.maximum()
         import sys

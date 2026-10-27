@@ -410,7 +410,7 @@ class System76Power:
                 # Wait to see if reboot actually happens.
                 for wait in range(12):
                     time.sleep(5)
-                    if self._reboot_marker is not None and not self._reboot_marker.exists():
+                    if self._persistent_marker is not None and not self._persistent_marker.exists():
                         print(f"  Reboot confirmed (marker cleared after {(wait+1)*5}s)", flush=True)
                         return True
                 # Marker still present - try next method.

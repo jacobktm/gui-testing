@@ -90,6 +90,8 @@ class TestSystem76PowerGUI:
         target = "performance" if handler.get_perf_profile() != "performance" else "balanced"
         handler.switch_perf_profile(target)
 
+        import time
+        time.sleep(3)
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         res = wf.detect_power_profile(os_id)
         assert res.success, res.summary

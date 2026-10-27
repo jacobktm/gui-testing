@@ -70,6 +70,8 @@ class System76PowerGUIWorkflow(Workflow):
     def set_power_profile_gui(self, profile: str, os_id: str, item_id: str = "gui.power_profile_switch") -> WorkflowResult:
         try:
             self.open_power_settings(os_id)
+            import time
+            time.sleep(1)
             if os_id == "pop-22.04":
                 coords = Coords.POP22_PROFILES.get(profile)
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
@@ -77,14 +79,24 @@ class System76PowerGUIWorkflow(Workflow):
             else:
                 coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
             if coords:
+                # Click the profile coordinate twice to ensure registration.
                 self.driver.click_at(coords)
-            # Wait for any pop-up/notification, then dismiss.
-            import time
-            time.sleep(2)
+                time.sleep(1)
+                self.driver.click_at(coords)
+                time.sleep(1)
+            # Dismiss any pop-up/notification.
             self.dismiss_menus()
-            # Extra dismiss: move to center and click to close lingering dialogs.
+            # Click center screen to close lingering dialogs.
             try:
-                self.driver.go_to((0.5, 0.5)).click_at((0.5, 0.5))
+                self.driver.go_to((0.5, 0.5))
+                self.driver.click_at((0.5, 0.5))
+            except Exception:
+                pass
+            time.sleep(1)
+            # Reclick center before screenshots (re-open if needed).
+            try:
+                self.driver.go_to((0.5, 0.5))
+                self.driver.click_at((0.5, 0.5))
             except Exception:
                 pass
             if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
@@ -206,7 +218,10 @@ class System76PowerGUIWorkflow(Workflow):
         return WorkflowResult(success=verified, item_id=item_id, summary=f"to_integrated (actual: {current}, verified={verified})", data={"from": current, "to": "integrated", "actual": current, "verified": verified})
 
     def transition_graphics(self, source: str, target: str, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
-        """Execute a single graphics mode transition via GUI clicks."""
+        """Execute a single graphics mode transition via GUI clicks.
+
+        Mirrors the CLI transition_graphics phase machine so it survives reboots.
+        """
         if not os_id.startswith("pop-22"):
             if self.artifacts is not None and item_id:
                 try:
@@ -233,37 +248,126 @@ class System76PowerGUIWorkflow(Workflow):
                     pass
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
-        # Switch to target via GUI
-        self.set_graphics_mode_gui(target, os_id=os_id, item_id=item_id)
-        # Wait for pop-up/notification to appear, then dismiss.
-        import time
-        time.sleep(90)
-        self.dismiss_menus()
-        handler.setup_autologin()
-        handler.reboot()
-        handler.wait_for_boot()
+        progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
+        results = progress.get("results", [])
+        done = {(e.get("from"), e.get("to")) for e in results if isinstance(e, dict)}
+
+        # Already completed in a previous run.
+        if (source, target) in done:
+            entry = next((e for e in results if e.get("from") == source and e.get("to") == target), {})
+            return WorkflowResult(
+                success=entry.get("verified", True),
+                item_id=item_id,
+                summary=f"{source}->{target} (already done, verified={entry.get('verified', '?')})",
+                data={"from": source, "to": target, "actual": entry.get("actual"), "verified": entry.get("verified", True)},
+            )
+
+        in_progress = (progress.get("source"), progress.get("target")) == (source, target)
+        phase = progress.get("phase", "start") if in_progress else "start"
+
         current = handler.get_graphics_mode()
-        verified = (current == target)
+        print(f"  [GUI] transition {source}->{target}: current mode = {current!r}", flush=True)
 
-        # On 22.04, also verify via GUI detection
-        gui_verified = None
-        try:
-            det = self.detect_graphics_mode(os_id=os_id)
-            if det.success:
-                detected = (det.data or {}).get("graphics", "").lower()
-                gui_verified = (detected == target.lower())
-        except Exception:
+        # If already in target mode, verify and return without rebooting.
+        if current == target:
+            print(f"  [GUI] Already in {target} mode, no transition needed.", flush=True)
+            verified = True
             gui_verified = None
+            entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
+            results.append(entry)
+            done.add((source, target))
+            self.persist_state(item_id, "state", {
+                "kind": "graphics_transition",
+                "phase": "done",
+                "source": source,
+                "target": target,
+                "current": current,
+                "results": results,
+                "completed": len(results),
+            })
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "action", "transition -> " + source + " to " + target + " (verified=" + str(verified) + ")\n", step="transition")
+                except Exception:
+                    pass
+            return WorkflowResult(
+                success=verified,
+                item_id=item_id,
+                summary=f"{source}->{target} (actual: {current}, verified={verified})",
+                data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
+            )
 
-        if gui_verified is not None:
-            verified = verified and gui_verified
+        # --- Phase: start - switch to target via GUI, save, reboot ---
+        if phase == "start":
+            self.set_graphics_mode_gui(target, os_id=os_id, item_id=item_id)
+            import time
+            time.sleep(5)
+            self.dismiss_menus()
+            self.persist_state(item_id, "state", {
+                "kind": "graphics_transition",
+                "phase": "rebooting",
+                "source": source,
+                "target": target,
+                "current": target,
+                "results": results,
+            })
+            handler.setup_autologin()
+            handler.reboot()
+            handler.wait_for_boot()
+            current = handler.get_graphics_mode()
+            phase = "rebooting"
+            print(f"  [GUI] after reboot: mode = {current!r} (target={target!r})", flush=True)
 
-        return WorkflowResult(
-            success=verified,
-            item_id=item_id,
-            summary=f"{source}->{target} (actual: {current}, verified={verified})",
-            data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
-        )
+        # --- Phase: rebooting — verify target, record result ---
+        if phase in ("rebooting", "done"):
+            current = handler.get_graphics_mode()
+            print(f"  [GUI] verify: current={current!r} target={target!r} match={current == target}", flush=True)
+            target_ok = (current == target)
+
+            # GUI verification (only on 22.04).
+            gui_verified = None
+            try:
+                det = self.detect_graphics_mode(os_id=os_id)
+                if det.success:
+                    detected = (det.data or {}).get("graphics", "").lower()
+                    gui_verified = (detected == target.lower())
+                else:
+                    gui_verified = False
+            except Exception:
+                gui_verified = None
+
+            verified = target_ok
+            if gui_verified is not None:
+                verified = verified and gui_verified
+
+            entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
+            results.append(entry)
+            done.add((source, target))
+            self.persist_state(item_id, "state", {
+                "kind": "graphics_transition",
+                "phase": "done",
+                "source": source,
+                "target": target,
+                "current": current,
+                "results": results,
+                "completed": len(results),
+            })
+
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "action", "transition -> " + source + " to " + target + " (verified=" + str(verified) + ")\n", step="transition")
+                except Exception:
+                    pass
+
+            return WorkflowResult(
+                success=verified,
+                item_id=item_id,
+                summary=f"{source}->{target} (actual: {current}, verified={verified})",
+                data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
+            )
+
+        # Fallback
+        return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (unexpected phase: {phase})")
 
     def transition_graphics_all(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
         """Run all graphics transitions via GUI in the order determined by starting mode."""

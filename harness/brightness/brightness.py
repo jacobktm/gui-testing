@@ -179,17 +179,6 @@ def get_max_brightness(backlight: Optional[Path] = None) -> Optional[int]:
         return None
 
 
-def get_max_brightness(backlight: Optional[Path] = None) -> Optional[int]:
-    """Read the maximum brightness value from sysfs."""
-    bl = backlight or get_backlight()
-    if bl is None:
-        return None
-    try:
-        return int((bl / "max_brightness").read_text().strip())
-    except (OSError, ValueError):
-        return None
-
-
 class BrightnessHandler:
     """Drive screen brightness via dotool keys, reading state from sysfs."""
 

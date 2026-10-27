@@ -89,9 +89,9 @@ fi
 # --- Determine if reboot test setup is needed ---
 NEEDS_REBOOT_SETUP=false
 if [[ "${RUN_DESTRUCTIVE_TESTS:-}" == "1" ]]; then
-    if system76-power graphics switchable 2>/dev/null | grep -qx "switchable"; then
-        NEEDS_REBOOT_SETUP=true
-    fi
+    # Reboot setup is needed for brightness reboot test and any graphics
+    # transition tests. Enable whenever destructive tests run.
+    NEEDS_REBOOT_SETUP=true
 fi
 
 # --- Privileged setup (passwordless sudo for harness.reboot commands) ---

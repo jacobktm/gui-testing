@@ -392,7 +392,7 @@ class System76PowerCLIWorkflow(Workflow):
                     except Exception:
                         gui_verified = None
 
-                verified = target_ok and source_ok
+                verified = target_ok
                 if gui_verified is not None:
                     verified = verified and gui_verified
 

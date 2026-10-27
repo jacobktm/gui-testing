@@ -62,7 +62,7 @@ class GuiDriver:
         _t.sleep(15)
 
         if reference is not None:
-            ref_hint = f"The approximate position is ({reference[0]:.2f}, {reference[1]:.2f}). Adjust if needed for this display. "
+            ref_hint = f"The approximate position is ({reference[0]:.4f}, {reference[1]:.4f}). Adjust if needed for this display. "
         else:
             ref_hint = ""
         prompt = (
@@ -70,7 +70,8 @@ class GuiDriver:
             f"Find the button or menu item labeled '{label}'. "
             f"{ref_hint}"
             f"Return ONLY its center position as two numbers between 0.0 and 1.0. "
-            f"Format: x,y (for example: 0.95,0.24). "
+            f"Use at least 4 decimal places of precision. "
+            f"Format: x,y (for example: 0.9550,0.2400). "
             f"Do not include any other text or explanation."
         )
 
@@ -139,7 +140,7 @@ class GuiDriver:
             ref_lines = []
             for l in labels:
                 if l in references:
-                    ref_lines.append(f"  {l}: approx ({references[l][0]:.2f}, {references[l][1]:.2f})")
+                    ref_lines.append(f"  {l}: approx ({references[l][0]:.4f}, {references[l][1]:.4f})")
             if ref_lines:
                 ref_hint = "Approximate positions (adjust for this display):\n" + "\n".join(ref_lines) + "\n"
         prompt = (
@@ -148,7 +149,7 @@ class GuiDriver:
             f"return their center coordinates as normalized values (0.0 to 1.0). "
             f"{ref_hint}"
             f"Format: label=x,y on separate lines. "
-            f"Example:\nHigh Performance=0.95,0.24\nBalanced=0.95,0.18\n"
+            f"Example:\nHigh Performance=0.9550,0.2400\nBalanced=0.9550,0.1800\n"
             f"Only return coordinates, nothing else."
         )
 

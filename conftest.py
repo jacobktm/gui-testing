@@ -108,6 +108,7 @@ def _finalize_run(config) -> None:
     try:
         from harness.report import ReportWriter
         ReportWriter(run).write_text()
+        ReportWriter(run).archive()
     except Exception:
         pass
 

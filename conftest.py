@@ -202,10 +202,13 @@ def pytest_collection_modifyitems(config, items):
         if item.get_closest_marker("reboot") and not item.get_closest_marker("skip")
     ]
 
+    # Run screenshot permission test first (grants permission for all later screenshots).
     # Run graphics power toggle tests last (they can leave the GPU in a bad
     # state that affects subsequent tests).
     def _sort_key(item):
         name = getattr(item, "name", "") or ""
+        if "screenshot_permission" in name:
+            return -1
         if "graphics_power" in name:
             return 1
         return 0

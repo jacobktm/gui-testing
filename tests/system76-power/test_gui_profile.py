@@ -16,12 +16,6 @@ class TestSystem76PowerGUI:
         """Trigger screenshot permission dialog early (COSMIC)."""
         import os
         from pathlib import Path
-        # Pre-grant permission via D-Bus before attempting capture.
-        try:
-            from harness.screenshots.screenshot import grant_screenshot_permission
-            grant_screenshot_permission()
-        except Exception:
-            pass
         from harness.screenshots.screenshot import capture
 
         out_dir = Path("/tmp/opencode/screenshot_perm")
@@ -29,14 +23,30 @@ class TestSystem76PowerGUI:
         shot_path = out_dir / "permission_test.png"
         if shot_path.exists():
             shot_path.unlink()
+        # Pre-grant permission via D-Bus.
         try:
-            capture(shot_path, timeout=3.0)
+            from harness.screenshots.screenshot import grant_screenshot_permission
+            grant_screenshot_permission()
         except Exception:
-            pass  # Permission dialog may block; that's expected on first run
-        # Wait for screenshot notification to disappear (15s).
-        # dotool cannot dismiss the permission dialog (system context).
-        # The D-Bus pre-grant should prevent it from appearing.
+            pass
+
+        # Wait until screenshots actually work (retry up to 60s).
         import time as _t
+        deadline = _t.time() + 60
+        screenshot_ok = False
+        while _t.time() < deadline:
+            if shot_path.exists():
+                shot_path.unlink()
+            try:
+                capture(shot_path, timeout=5.0)
+                screenshot_ok = True
+                break
+            except Exception:
+                # Permission dialog may be showing; wait and retry.
+                _t.sleep(3)
+        assert screenshot_ok, "screenshots not working after 60s (permission not granted?)"
+
+        # Wait for screenshot notification to disappear (15s).
         _t.sleep(15)
         # Re-grant permission in case it was revoked.
         try:

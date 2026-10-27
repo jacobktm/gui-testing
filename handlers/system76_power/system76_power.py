@@ -364,11 +364,15 @@ class System76Power:
             self._run(['sync'], check=False, timeout=10)
         except Exception:
             pass
-        # Record boot time before reboot for verification.
+        # Create a marker file in /tmp.  /tmp is tmpfs and is cleared on
+        # reboot, so its absence after wait_for_boot confirms the reboot
+        # actually happened.
+        marker = Path("/tmp/gui-testing-reboot-marker")
         try:
-            self._boot_time_before = float(open('/proc/uptime').read().split()[0])
+            marker.write_text("reboot_pending", encoding="utf-8")
+            self._reboot_marker = marker
         except Exception:
-            self._boot_time_before = None
+            self._reboot_marker = None
         # Try polkit-based reboot first (works on Pop!_OS without sudo).
         result = self._run(['systemctl', 'reboot'], check=False)
         if result.get('returncode') in (0, None):
@@ -387,19 +391,24 @@ class System76Power:
         time.sleep(15)
         deadline = time.time() + timeout
         elapsed = 0
+        marker = getattr(self, "_reboot_marker", None)
         while time.time() < deadline:
+            # Check if the reboot marker was cleared (confirms reboot happened).
+            rebooted = marker is not None and not Path(marker).exists()
             try:
                 state = self._run(['systemctl', 'is-system-running'], check=False)
                 status = (state.get('stdout') or '').strip() if state else ''
                 if state.get('returncode') == 0 and status:
-                    # Verify the system actually rebooted.
+                    if marker is not None and not rebooted:
+                        print(f"  Warning: reboot marker still present, system may not have rebooted", flush=True)
+                    else:
+                        print(f"  System rebooted and is {status} (after {elapsed}s)", flush=True)
+                    # Clean up marker.
                     try:
-                        boot_time_after = float(open('/proc/uptime').read().split()[0])
-                        if self._boot_time_before is not None and boot_time_after >= self._boot_time_before:
-                            print(f"  Warning: system may not have rebooted (uptime {boot_time_after:.0f}s >= {self._boot_time_before:.0f}s)", flush=True)
+                        if marker is not None and Path(marker).exists():
+                            Path(marker).unlink()
                     except Exception:
                         pass
-                    print(f"  System is {status} (after {elapsed}s)", flush=True)
                     return True
                 if status:
                     print(f"  ... {status} ({elapsed}s)", flush=True, end='\r')

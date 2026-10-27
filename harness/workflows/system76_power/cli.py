@@ -83,7 +83,10 @@ class System76PowerCLIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        switchable = handler.switchable()
+        switchable = System76Power.load_switchable_state()
+        if switchable is None:
+            switchable = handler.switchable()
+            System76Power.save_switchable_state(switchable)
         if switchable != "switchable":
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
@@ -158,7 +161,10 @@ class System76PowerCLIWorkflow(Workflow):
             phase="verify",
             artifacts=self.artifacts,
         )
-        switchable = handler.switchable()
+        switchable = System76Power.load_switchable_state()
+        if switchable is None:
+            switchable = handler.switchable()
+            System76Power.save_switchable_state(switchable)
         if switchable != "switchable":
             return []
 
@@ -222,7 +228,10 @@ class System76PowerCLIWorkflow(Workflow):
         )
 
         # Skip on non-switchable systems or non-applicable OS.
-        switchable = handler.switchable()
+        switchable = System76Power.load_switchable_state()
+        if switchable is None:
+            switchable = handler.switchable()
+            System76Power.save_switchable_state(switchable)
         if switchable != "switchable":
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 

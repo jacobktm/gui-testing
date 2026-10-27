@@ -6,11 +6,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+SWITCHABLE_STATE_PATH = Path.home() / ".local" / "share" / "gui-testing" / "switchable.json"
+
 __all__ = ["System76Power"]
 
 
 class System76Power:
     perf_profiles = ['performance', 'balanced', 'battery']
+
+    GRAPHICS_MODE_STATE_PATH = __import__('pathlib').Path.home() / '.local' / 'share' / 'gui-testing' / 'graphics_mode.json'
     graphics_modes = ['nvidia', 'integrated', 'hybrid', 'compute']
 
     def __init__(
@@ -189,6 +193,26 @@ class System76Power:
             return 'not switchable'
         return 'unknown'
 
+    @staticmethod
+    def save_switchable_state(result: str) -> None:
+        """Persist the switchable graphics result so other tests don't re-query."""
+        try:
+            SWITCHABLE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            SWITCHABLE_STATE_PATH.write_text(json.dumps({"switchable": result}))
+        except Exception:
+            pass
+
+    @staticmethod
+    def load_switchable_state() -> str | None:
+        """Load the persisted switchable graphics result, or None if not saved."""
+        try:
+            if SWITCHABLE_STATE_PATH.exists():
+                data = json.loads(SWITCHABLE_STATE_PATH.read_text())
+                return data.get("switchable")
+        except Exception:
+            pass
+        return None
+
     def switch_perf_profile(self, profile=None):
         if not profile:
             current = self.get_perf_profile()
@@ -289,6 +313,50 @@ class System76Power:
             check=False,
         )
         return result.get("returncode") == 0
+
+    def save_original_graphics_mode(self) -> None:
+        """Persist the current graphics mode so it can be restored later."""
+        try:
+            import json
+            from pathlib import Path
+            mode = self.get_graphics_mode()
+            if mode is None:
+                return
+            path = self.GRAPHICS_MODE_STATE_PATH
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"mode": mode}))
+        except Exception:
+            pass
+
+    def restore_original_graphics_mode(self) -> bool:
+        """Restore the graphics mode saved by save_original_graphics_mode.
+
+        Returns True if the mode was changed (reboot needed to apply).
+        """
+        try:
+            import json
+            from pathlib import Path
+            path = self.GRAPHICS_MODE_STATE_PATH
+            if not path.exists():
+                return False
+            data = json.loads(path.read_text())
+            original = data.get("mode")
+            if original is None:
+                return False
+            current = self.get_graphics_mode()
+            if current == original:
+                return False
+            # Switch back to original mode.
+            result = self._run(['system76-power', 'graphics', original], check=False)
+            if result.get('returncode') in (0, None):
+                try:
+                    path.unlink()
+                except Exception:
+                    pass
+                return True
+        except Exception:
+            pass
+        return False
 
     def reboot(self) -> bool:
         # Sync filesystems before rebooting.

@@ -95,6 +95,46 @@ def _ensure_run(config) -> RunArtifacts:
     return run
 
 
+def _write_summary_report(config) -> None:
+    run = getattr(config, "_gui_run", None)
+    if run is None:
+        return
+    try:
+        lines = []
+        lines.append("=" * 60)
+        lines.append("TEST RESULT REPORT")
+        lines.append("=" * 60)
+        lines.append(f"Run ID: {run.run_id}")
+        lines.append(f"Run dir: {run.run_dir}")
+        lines.append("")
+        # Count statuses
+        counts = {}
+        for entry in run.manifest.tests:
+            status = entry.get("status", "unknown")
+            counts[status] = counts.get(status, 0) + 1
+        counts["total"] = len(run.manifest.tests)
+        lines.append("Summary:")
+        for key in ("passed", "failed", "skipped", "unknown", "total"):
+            if key in counts:
+                lines.append(f"  {key}: {counts[key]}")
+        lines.append("")
+        lines.append("Per-test results:")
+        for entry in run.manifest.tests:
+            tid = entry.get("id", "?")
+            status = entry.get("status", "unknown")
+            summary = entry.get("summary", "")
+            lines.append(f"  [{status.upper()}] {tid}: {summary}")
+        lines.append("")
+        lines.append("=" * 60)
+        report = "\n".join(lines) + "\n"
+        report_path = run.run_dir / "test_report.txt"
+        report_path.write_text(report, encoding="utf-8")
+        # Also print to terminal
+        print(report)
+    except Exception:
+        pass
+
+
 def _finalize_run(config) -> None:
     run = getattr(config, "_gui_run", None)
     if run is None or getattr(config, "_gui_finalized", False):
@@ -105,6 +145,7 @@ def _finalize_run(config) -> None:
         run.finalize(retention_plan=plan)
     except Exception:
         run.finalize()
+    _write_summary_report(config)
 
 
 def pytest_addoption(parser):
@@ -132,6 +173,14 @@ def pytest_configure(config):
             ],
             capture_output=True, text=True, timeout=10,
         )
+    except Exception:
+        pass
+
+    # Save original graphics mode before tests run (for cleanup restore).
+    try:
+        from handlers.system76_power import System76Power
+        h = System76Power()
+        h.save_original_graphics_mode()
     except Exception:
         pass
 
@@ -245,6 +294,15 @@ def pytest_collection_finish(session):
 def pytest_sessionfinish(session, exitstatus):
     config = session.config
     _finalize_run(config)
+    # Restore original graphics mode if it was changed by tests.
+    try:
+        from handlers.system76_power import System76Power
+        h = System76Power()
+        if h.restore_original_graphics_mode():
+            h.reboot()
+            h.wait_for_boot()
+    except Exception:
+        pass
     setup = getattr(config, "_gui_reboot_setup", None)
     if os.environ.get("GUI_TESTING_KEEP_REBOOT_SETUP") == "1":
         return

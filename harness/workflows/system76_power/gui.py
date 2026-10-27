@@ -107,7 +107,10 @@ class System76PowerGUIWorkflow(Workflow):
             phase="verify",
             artifacts=self.artifacts,
         )
-        switchable = handler.switchable()
+        switchable = System76Power.load_switchable_state()
+        if switchable is None:
+            switchable = handler.switchable()
+            System76Power.save_switchable_state(switchable)
         if switchable != "switchable":
             return []
 
@@ -157,7 +160,10 @@ class System76PowerGUIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        switchable = handler.switchable()
+        switchable = System76Power.load_switchable_state()
+        if switchable is None:
+            switchable = handler.switchable()
+            System76Power.save_switchable_state(switchable)
         if switchable != "switchable":
             if self.artifacts is not None and item_id:
                 try:
@@ -198,7 +204,10 @@ class System76PowerGUIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        switchable = handler.switchable()
+        switchable = System76Power.load_switchable_state()
+        if switchable is None:
+            switchable = handler.switchable()
+            System76Power.save_switchable_state(switchable)
         if switchable != "switchable":
             if self.artifacts is not None and item_id:
                 try:
@@ -255,7 +264,10 @@ class System76PowerGUIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        switchable = handler.switchable()
+        switchable = System76Power.load_switchable_state()
+        if switchable is None:
+            switchable = handler.switchable()
+            System76Power.save_switchable_state(switchable)
         if switchable != "switchable":
             if self.artifacts is not None and item_id:
                 try:

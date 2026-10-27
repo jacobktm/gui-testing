@@ -18,15 +18,14 @@ class TestSystem76PowerCLIFull:
         assert (res.data or {}).get("profile") == target
 
     def test_laptop_switchable_graphics_can_be_queried(self, artifacts):
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.query_switchable()
-        assert res.success, res.summary
+        from handlers.system76_power import System76Power
+        handler = System76Power(artifacts=artifacts)
+        result = handler.switchable()
+        # Persist so transition tests don't re-query.
+        System76Power.save_switchable_state(result)
+        assert result in ("switchable", "not switchable"), result
 
     def test_graphics_power_query_set(self, artifacts):
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.get_graphics_power()
         # Accept various states
@@ -47,24 +46,16 @@ class TestSystem76PowerCLIFull:
     @pytest.mark.reboot
     def test_graphics_transition_to_integrated(self, artifacts):
         """Transition from current mode to integrated (ensures starting point)."""
-        from handlers.system76_power import System76Power
         from harness.workflows import System76PowerCLIWorkflow
 
-        handler = System76Power(artifacts=artifacts)
-        if handler.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_to_integrated(item_id="cli.graphics_transition.to_integrated")
         assert res.success, res.summary
 
     @pytest.mark.reboot
     def test_graphics_transition_integrated_to_nvidia(self, artifacts):
-        from handlers.system76_power import System76Power
         from harness.workflows import System76PowerCLIWorkflow
 
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "nvidia", item_id="cli.graphics_transition.integrated_to_nvidia")
         assert res.success, res.summary
@@ -75,11 +66,6 @@ class TestSystem76PowerCLIFull:
     @pytest.mark.reboot
     def test_graphics_transition_nvidia_to_hybrid(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
-
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "hybrid", item_id="cli.graphics_transition.nvidia_to_hybrid")
@@ -92,11 +78,6 @@ class TestSystem76PowerCLIFull:
     def test_graphics_transition_hybrid_to_compute(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
-
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "compute", item_id="cli.graphics_transition.hybrid_to_compute")
         assert res.success, res.summary
@@ -107,11 +88,6 @@ class TestSystem76PowerCLIFull:
     @pytest.mark.reboot
     def test_graphics_transition_compute_to_integrated(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
-
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "integrated", item_id="cli.graphics_transition.compute_to_integrated")
@@ -124,11 +100,6 @@ class TestSystem76PowerCLIFull:
     def test_graphics_transition_integrated_to_hybrid(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
-
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "hybrid", item_id="cli.graphics_transition.integrated_to_hybrid")
         assert res.success, res.summary
@@ -139,11 +110,6 @@ class TestSystem76PowerCLIFull:
     @pytest.mark.reboot
     def test_graphics_transition_hybrid_to_nvidia(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
-
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "nvidia", item_id="cli.graphics_transition.hybrid_to_nvidia")
@@ -156,11 +122,6 @@ class TestSystem76PowerCLIFull:
     def test_graphics_transition_nvidia_to_compute(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
-
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "compute", item_id="cli.graphics_transition.nvidia_to_compute")
         assert res.success, res.summary
@@ -171,11 +132,6 @@ class TestSystem76PowerCLIFull:
     @pytest.mark.reboot
     def test_graphics_transition_compute_to_hybrid(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
-
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "hybrid", item_id="cli.graphics_transition.compute_to_hybrid")
@@ -188,11 +144,6 @@ class TestSystem76PowerCLIFull:
     def test_graphics_transition_hybrid_to_integrated(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
-
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "integrated", item_id="cli.graphics_transition.hybrid_to_integrated")
         assert res.success, res.summary
@@ -203,11 +154,6 @@ class TestSystem76PowerCLIFull:
     @pytest.mark.reboot
     def test_graphics_transition_integrated_to_compute(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
-
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "compute", item_id="cli.graphics_transition.integrated_to_compute")
@@ -220,11 +166,6 @@ class TestSystem76PowerCLIFull:
     def test_graphics_transition_compute_to_nvidia(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
 
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
-
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "nvidia", item_id="cli.graphics_transition.compute_to_nvidia")
         assert res.success, res.summary
@@ -235,11 +176,6 @@ class TestSystem76PowerCLIFull:
     @pytest.mark.reboot
     def test_graphics_transition_nvidia_to_integrated(self, artifacts):
         from harness.workflows import System76PowerCLIWorkflow
-
-        from handlers.system76_power import System76Power
-        _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
-            pytest.skip("not switchable graphics")
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "integrated", item_id="cli.graphics_transition.nvidia_to_integrated")

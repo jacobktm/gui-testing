@@ -43,25 +43,22 @@ def get_backlight() -> Optional[Path]:
     # actual_brightness.
     def score(p: Path) -> int:
         s = 0
-        name = p.name.lower()
-        # Prefer EC/WMI/System76 devices (the real brightness controller).
-        if any(k in name for k in ("ec", "wmi", "system76", "amdgpu", "intel")):
-            s += 20
         # Prefer devices with actual_brightness (reflects real hardware state).
         if (p / "actual_brightness").exists():
-            s += 5
-        # Prefer non-acpi devices (acpi_video0 is often a fallback).
-        if "acpi_video" not in name:
-            s += 3
-        # Prefer symlinked devices (may point to EC source).
+            s += 10
+        # Prefer symlinked devices (may point to an EC source).
         if p.is_symlink():
-            s += 2
-        # Prefer higher max_brightness (EC devices typically have 255).
+            s += 5
+        # Prefer higher max_brightness (EC/backlight devices typically have
+        # more levels than the acpi_video0 fallback).
         try:
             mb = int((p / "max_brightness").read_text().strip())
             s += min(mb // 50, 5)
         except (OSError, ValueError):
             pass
+        # Deprioritize acpi_video0 (often a fallback, not the real controller).
+        if "acpi_video" in p.name.lower():
+            s -= 5
         return s
 
     return max(candidates, key=score)

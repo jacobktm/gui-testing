@@ -14,6 +14,9 @@ from typing import Optional
 
 STATE_PATH = Path.home() / ".local/share/gui-testing/brightness.json"
 
+# Cache the backlight device path discovered from sysfs scan.
+_CACHED_BACKLIGHT: Optional[Path] = None
+
 
 __all__ = [
     "BrightnessHandler",
@@ -28,40 +31,37 @@ __all__ = [
 def get_backlight() -> Optional[Path]:
     """Return the best backlight device directory, or ``None``.
 
-    On Ubuntu the brightness may be exposed via a symlinked device that
-    points to an EC (embedded controller) source.  Prefer devices that
-    have ``actual_brightness`` (more reliable) and symlinked (EC) devices
-    over plain ``acpi_video0``.
+    Uses a module-level cache so repeated calls don't re-scan sysfs.
     """
+    global _CACHED_BACKLIGHT
+    if _CACHED_BACKLIGHT is not None and _CACHED_BACKLIGHT.exists():
+        return _CACHED_BACKLIGHT
+
     base = Path("/sys/class/backlight")
     if not base.exists():
         return None
     candidates = [c for c in base.iterdir() if c.is_dir() or c.is_symlink()]
     if not candidates:
         return None
-    # Score each candidate: prefer symlinked (EC) devices and those with
-    # actual_brightness.
+
     def score(p: Path) -> int:
         s = 0
-        # Prefer devices with actual_brightness (reflects real hardware state).
         if (p / "actual_brightness").exists():
             s += 10
-        # Prefer symlinked devices (may point to an EC source).
         if p.is_symlink():
             s += 5
-        # Prefer higher max_brightness (EC/backlight devices typically have
-        # more levels than the acpi_video0 fallback).
         try:
             mb = int((p / "max_brightness").read_text().strip())
             s += min(mb // 50, 5)
         except (OSError, ValueError):
             pass
-        # Deprioritize acpi_video0 (often a fallback, not the real controller).
         if "acpi_video" in p.name.lower():
             s -= 5
         return s
 
-    return max(candidates, key=score)
+    result = max(candidates, key=score)
+    _CACHED_BACKLIGHT = result
+    return result
 
 
 def _parse_system76_power_brightness() -> tuple[Optional[int], Optional[int]]:

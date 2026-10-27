@@ -491,6 +491,16 @@ class System76PowerCLIWorkflow(Workflow):
         phase = progress.get("phase", "before")
         print(f"  [brightness_reboot] phase={phase} has_saved_before={has_saved_before}", flush=True)
 
+        # Debug: show what system76-power profile returns
+        try:
+            import subprocess
+            r = subprocess.run(["system76-power", "profile"], capture_output=True, text=True, timeout=10)
+            print(f"  [brightness_reboot] system76-power profile rc={r.returncode}", flush=True)
+            for line in r.stdout.splitlines():
+                print(f"    {line}", flush=True)
+        except Exception as e:
+            print(f"  [brightness_reboot] system76-power profile failed: {e}", flush=True)
+
         if not has_saved_before:
             # First invocation: save brightness and reboot.
             before = get_brightness()

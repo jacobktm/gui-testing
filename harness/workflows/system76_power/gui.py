@@ -273,6 +273,16 @@ class System76PowerGUIWorkflow(Workflow):
             print(f"  [GUI] Already in {target} mode, no transition needed.", flush=True)
             verified = True
             gui_verified = None
+            # GUI verification (only on 22.04).
+            try:
+                det = self.detect_graphics_mode(os_id=os_id)
+                if det.success:
+                    detected = (det.data or {}).get("graphics", "").lower()
+                    gui_verified = (detected == target.lower())
+                    if gui_verified is not None:
+                        verified = verified and gui_verified
+            except Exception:
+                gui_verified = None
             entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
             results.append(entry)
             done.add((source, target))

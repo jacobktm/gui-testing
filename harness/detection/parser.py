@@ -63,10 +63,18 @@ def parse_detection(
     value = None
     if expected:
         expected_set = {str(e).strip().lower() for e in expected}
+        # First try exact token match.
         for token in tokens:
             if token.lower() in expected_set:
                 value = token
                 break
+        # Then try multi-word match (e.g., "Power Saver" in text).
+        if value is None:
+            text_lower = text.lower()
+            for exp in sorted(expected_set, key=len, reverse=True):
+                if exp in text_lower:
+                    value = exp
+                    break
     if value is None and tokens:
         value = tokens[0]
     if value is None:
@@ -81,8 +89,11 @@ def parse_detection(
     if expected:
         expected_set = {str(e).strip().lower() for e in expected}
         if value.lower() not in expected_set:
-            raise DetectionParseError(
-                f"value {value!r} not in expected {sorted(expected_set)}"
-            )
+            # Check if value is a substring match.
+            val_lower = value.lower()
+            if not any(val_lower in exp or exp in val_lower for exp in expected_set):
+                raise DetectionParseError(
+                    f"value {value!r} not in expected {sorted(expected_set)}"
+                )
 
     return DetectionResult(value=value, normalized=normalized, raw=response)

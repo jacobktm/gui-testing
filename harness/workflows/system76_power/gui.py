@@ -497,7 +497,7 @@ class System76PowerGUIWorkflow(Workflow):
         'Balanced', 'Battery Saver' or 'Battery'.
         """
         if os_id == "ubuntu-26.04":
-            expected = {"performance", "balanced", "battery"}
+            expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
             prompt = (
                 "Which performance profile is selected or highlighted? "
                 "I want only a single word answer either 'performance', "
@@ -505,7 +505,7 @@ class System76PowerGUIWorkflow(Workflow):
                 "Power Saver is the same as 'battery'."
             )
         else:
-            expected = {"performance", "balanced", "battery"}
+            expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
             prompt = (
                 "Which performance profile is selected or highlighted? "
                 "I want only a single word answer either 'performance', "
@@ -570,10 +570,19 @@ class System76PowerGUIWorkflow(Workflow):
 
         # Normalize: map GUI labels to CLI names.
         normalized = value.lower().strip()
-        if normalized in ("high performance", "high-performance"):
-            normalized = "performance"
-        elif normalized in ("battery saver", "battery-saver", "power saver", "power-saver"):
+        # Handle multi-word responses from LLM.
+        if "power saver" in normalized or "battery saver" in normalized:
             normalized = "battery"
+        elif "high performance" in normalized:
+            normalized = "performance"
+        elif normalized not in ("performance", "balanced", "battery"):
+            # Fallback: check if any keyword is in the response.
+            if "battery" in normalized:
+                normalized = "battery"
+            elif "performance" in normalized:
+                normalized = "performance"
+            elif "balanced" in normalized:
+                normalized = "balanced"
 
         return WorkflowResult(
             success=value.lower() in {e.lower() for e in expected},

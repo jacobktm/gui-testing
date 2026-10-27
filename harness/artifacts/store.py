@@ -16,13 +16,13 @@ Layout::
 Evidence is indexed in ``manifest.tests`` as item records::
 
     {
-      "id": "gnome.brightness_balanced_max",
+      "id": "brightness.balanced_max",
       "status": "passed",
       "summary": "...",
       "metadata": {...},
       "evidence": [
         {
-          "item": "gnome.brightness_balanced_max",
+          "item": "brightness.balanced_max",
           "path": "items/.../before/001-step.png",
           "kind": "screenshot",
           "phase": "before",

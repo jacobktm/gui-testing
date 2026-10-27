@@ -375,8 +375,19 @@ class System76Power:
             self._reboot_marker = None
 
         # Try each method until one actually reboots the system.
-        # systemctl reboot can return 0 without rebooting on some systems.
-        for cmd in (['systemctl', 'reboot'], ['sudo', 'systemctl', 'reboot'], ['sudo', 'reboot'], ['reboot']):
+        # systemctl reboot can return 0 without rebooting on some systems
+        # (e.g. blocked by inhibitor locks or confirmation dialogs).
+        reboot_cmds = [
+            ['systemctl', 'reboot', '-i'],              # ignore inhibitors
+            ['systemctl', 'reboot', '--no-block'],       # don't wait
+            ['systemctl', 'reboot'],                      # standard
+            ['sudo', 'systemctl', 'reboot', '-i'],
+            ['sudo', 'systemctl', 'reboot'],
+            ['sudo', 'reboot', '-f'],                   # force, bypass inhibitors
+            ['sudo', 'reboot'],
+            ['reboot', '-f'],
+        ]
+        for cmd in reboot_cmds:
             print(f"  Trying reboot: {' '.join(cmd)}", flush=True)
             result = self._run(cmd, check=False, timeout=30)
             rc = result.get('returncode')
@@ -390,10 +401,10 @@ class System76Power:
                         return True
                 # Marker still present - try next method.
                 print(f"  Reboot not confirmed (marker still present after 60s), trying next method...", flush=True)
-        # If none confirmed a reboot, force it.
+        # If none confirmed a reboot, force it via sysrq.
         print(f"  No reboot method confirmed; forcing reboot via sysrq", flush=True)
         try:
-            self._run(['sudo', 'sh', '-c', 'echo b > /proc/sysrq-trigger'], check=False, timeout=10)
+            self._run(['sh', '-c', 'echo b | sudo tee /proc/sysrq-trigger > /dev/null'], check=False, timeout=10)
         except Exception:
             pass
         return True

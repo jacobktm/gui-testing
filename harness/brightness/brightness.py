@@ -289,8 +289,26 @@ class BrightnessHandler:
         return c is not None and m is not None and c >= m
 
     def is_at_min(self) -> bool:
+        # The minimum is wherever brightness stops changing.
         c = self.current()
-        return c is not None and c <= 0
+        if c is None:
+            return False
+        # Press down once more and check if it changed.
+        prev = c
+        proc = subprocess.Popen(["dotool"], stdin=subprocess.PIPE, text=True)
+        try:
+            proc.stdin.write("key brightnessdown\n")
+            proc.stdin.flush()
+            import time
+            time.sleep(self.delay)
+        finally:
+            try:
+                proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+            proc.wait()
+        new_val = self.current()
+        return new_val is not None and new_val == prev
 
     def brightness_up_to_max(
         self,
@@ -346,9 +364,17 @@ class BrightnessHandler:
     ) -> bool:
         """Lower brightness to minimum using dotool ``brightnessdown`` keys.
 
-        Returns ``True`` if brightness reached (or went below) zero.
+        Presses brightnessdown until the sysfs value stops changing (i.e.
+        the hardware minimum is reached).  On some systems the minimum is
+        not zero, so we detect the floor by watching for no change.
+
+        Returns ``True`` if the value stabilised (stopped changing).
         """
         if self.backlight is None:
+            return False
+
+        prev = self.current()
+        if prev is None:
             return False
 
         proc = subprocess.Popen(
@@ -356,15 +382,26 @@ class BrightnessHandler:
         )
         try:
             presses = 0
+            stable_count = 0
             while presses < max_presses:
                 current = self.current()
-                if current is None or current <= 0:
+                if current is None:
                     break
                 for _ in range(steps_per_press):
                     proc.stdin.write("key brightnessdown\n")
                 proc.stdin.flush()
                 time.sleep(self.delay)
                 presses += 1
+                new_val = self.current()
+                if new_val is None:
+                    break
+                if new_val == current or new_val == prev:
+                    stable_count += 1
+                    if stable_count >= 2:
+                        break
+                else:
+                    stable_count = 0
+                prev = current
         finally:
             try:
                 proc.stdin.close()
@@ -372,8 +409,7 @@ class BrightnessHandler:
                 pass
             proc.wait()
 
-        current = self.current()
-        return current is not None and current <= 0
+        return True
 
 
 def brightness_up_to_max(delay: float = 0.15, **kwargs) -> bool:

@@ -172,7 +172,7 @@ def grant_screenshot_permission() -> bool:
                 "/org/freedesktop/impl/portal/PermissionStore",
                 "org.freedesktop.impl.portal.PermissionStore",
                 "SetPermission",
-                "sbssas", "screenshot", "true",
+                "sbssas", "screenshot", "false",
                 "com.system76.CosmicScreenshot", "screenshot", "1", "granted",
             ],
             capture_output=True, text=True, timeout=10,

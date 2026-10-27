@@ -82,7 +82,7 @@ if command -v cosmic-screenshot >/dev/null 2>&1; then
     busctl --user call org.freedesktop.impl.portal.PermissionStore \
         /org/freedesktop/impl/portal/PermissionStore \
         org.freedesktop.impl.portal.PermissionStore SetPermission \
-        sbssas "screenshot" true "com.system76.CosmicScreenshot" "screenshot" 1 "granted" \
+        sbssas "screenshot" false "com.system76.CosmicScreenshot" "screenshot" 1 "granted" \
         >/dev/null 2>&1 || true
 fi
 

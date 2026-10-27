@@ -106,8 +106,8 @@ def _finalize_run(config) -> None:
     except Exception:
         run.finalize()
     try:
-        from harness.report import write_summary_report
-        write_summary_report(run)
+        from harness.report import ReportWriter
+        ReportWriter(run).write_text()
     except Exception:
         pass
 

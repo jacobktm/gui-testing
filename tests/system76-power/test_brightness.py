@@ -65,9 +65,12 @@ class TestBrightness:
         b.brightness_down_to_min()
         before = b.current()
         max_b = b.maximum()
+        import sys
+        print(f"DEBUG balanced_min: before={before} max={max_b}", file=sys.stderr, flush=True)
         s.switch_perf_profile("balanced")
         time.sleep(3)
         cur = b.current()
+        print(f"DEBUG balanced_min: after={cur}", file=sys.stderr, flush=True)
         if artifacts:
             try:
                 artifacts.save_text("brightness.balanced_min", "verify", f"before={before} after={cur}/{max_b}\n", step="check")

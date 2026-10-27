@@ -374,6 +374,7 @@ class BrightnessHandler:
         try:
             presses = 0
             stable_count = 0
+            last_val = prev
             while presses < max_presses:
                 current = self.current()
                 if current is None:
@@ -386,13 +387,14 @@ class BrightnessHandler:
                 new_val = self.current()
                 if new_val is None:
                     break
-                if new_val == current or new_val == prev:
+                # Track actual last value for stabilization check.
+                if new_val == last_val:
                     stable_count += 1
-                    if stable_count >= 2:
+                    if stable_count >= 3:
                         break
                 else:
                     stable_count = 0
-                prev = current
+                last_val = new_val
         finally:
             try:
                 proc.stdin.close()

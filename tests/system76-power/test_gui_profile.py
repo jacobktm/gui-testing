@@ -229,6 +229,8 @@ class TestSystem76PowerGUI:
                 item_id=f"gui.power_profile_transition_{target}",
             )
             assert res.success, res.summary
+            import time
+            time.sleep(3)
             handler = System76Power(artifacts=artifacts)
             current = handler.get_perf_profile()
             assert current == target, f"expected profile {target}, got {current}"

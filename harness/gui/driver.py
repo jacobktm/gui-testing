@@ -49,14 +49,26 @@ class GuiDriver:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         shot_path = out_dir / f"screenshot_{phase}.png"
-        screenshot = capture(shot_path)
+        import sys
+        print(f"[capture_and_detect] capturing to {shot_path}", file=sys.stderr, flush=True)
+        try:
+            screenshot = capture(shot_path)
+            print(f"[capture_and_detect] capture OK: {screenshot.path} {screenshot.width}x{screenshot.height}", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"[capture_and_detect] capture FAILED: {e}", file=sys.stderr, flush=True)
+            raise
 
         active_path = out_dir / f"active_{phase}.png"
-        crop = crop_active_display(
-            screenshot,
-            active_path,
-            active_index=active_index,
-        )
+        try:
+            crop = crop_active_display(
+                screenshot,
+                active_path,
+                active_index=active_index,
+            )
+            print(f"[capture_and_detect] crop OK: {crop.path}", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"[capture_and_detect] crop FAILED: {e}", file=sys.stderr, flush=True)
+            raise
 
         # Send active display to model
         response = None

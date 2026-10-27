@@ -56,6 +56,10 @@ class GuiDriver:
         active_path = out_dir / f"active_{phase}.png"
         crop = crop_active_display(screenshot, active_path)
 
+        # Wait for screenshot notification to disappear.
+        import time as _t
+        _t.sleep(15)
+
         prompt = (
             f"Look at this screenshot of system settings. "
             f"Find the UI element labeled '{label}'. "
@@ -117,6 +121,10 @@ class GuiDriver:
 
         active_path = out_dir / f"active_{phase}.png"
         crop = crop_active_display(screenshot, active_path)
+
+        # Wait for screenshot notification to disappear.
+        import time as _t
+        _t.sleep(15)
 
         label_list = ", ".join(f"'{l}'" for l in labels)
         prompt = (

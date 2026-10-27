@@ -110,6 +110,9 @@ Applies to both GNOME and COSMIC desktops.
         assert before is not None
         ok = s.restart_daemon()
         if not ok:
+            import subprocess
+            r = subprocess.run(["sudo", "-n", "systemctl", "restart", "com.system76.PowerDaemon.service"], capture_output=True, text=True, timeout=10)
+            print(f"DEBUG restart rc={r.returncode} stderr={r.stderr.strip()}", flush=True)
             pytest.skip("could not restart daemon (sudo required)")
         # Give daemon a moment to settle
         import time

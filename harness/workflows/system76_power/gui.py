@@ -529,6 +529,10 @@ class System76PowerGUIWorkflow(Workflow):
                 success=False, item_id=item_id, summary=f"detect failed: {exc}"
             )
 
+        # Wait for screenshot notification to disappear (15s) before any clicks.
+        import time as _t
+        _t.sleep(15)
+
         if self.artifacts is not None and item_id:
             try:
                 ok = value in expected or value.lower() in {e.lower() for e in expected}
@@ -587,6 +591,10 @@ class System76PowerGUIWorkflow(Workflow):
             return WorkflowResult(
                 success=False, item_id=item_id, summary=f"detect failed: {exc}"
             )
+
+        # Wait for screenshot notification to disappear (15s).
+        import time as _t
+        _t.sleep(15)
 
         if self.artifacts is not None and item_id:
             try:

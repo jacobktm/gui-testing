@@ -54,6 +54,9 @@ class TestSystem76PowerGUI:
         except Exception:
             pass
         time.sleep(1)
+        # Wait for screenshot notification to disappear (15s).
+        import time as _t
+        _t.sleep(15)
         # Re-grant permission in case it was revoked.
         try:
             from harness.screenshots.screenshot import grant_screenshot_permission

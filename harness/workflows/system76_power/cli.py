@@ -492,12 +492,6 @@ class System76PowerCLIWorkflow(Workflow):
 
         def log(msg):
             print(msg, file=sys.stderr, flush=True)
-            # Also save to artifact for report.
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.save_text(item_id, "verify", msg + "\n", step="debug")
-                except Exception:
-                    pass
 
         # Load persisted state.
         state = self.load_persisted_state(item_id, phase="state")

@@ -504,15 +504,7 @@ class System76PowerCLIWorkflow(Workflow):
                     log(f"[brightness_reboot] state files on resume: {list(sd.iterdir())}")
             except Exception as e:
                 log(f"[brightness_reboot] state dir check on resume failed: {e}")
-        # Fallback: read from /tmp marker
-        if state is None:
-            try:
-                marker_val = Path("/tmp/gui-testing-brightness-reboot-marker").read_text().strip()
-                log(f"[brightness_reboot] /tmp marker value: {marker_val}")
-                state = {"phase": "rebooting", "settled": int(marker_val)}
-                log(f"[brightness_reboot] using marker fallback state: {state}")
-            except Exception as e:
-                log(f"[brightness_reboot] marker fallback failed: {e}")
+
 
         # Already completed.
         if isinstance(state, dict) and state.get("phase") == "done":
@@ -562,12 +554,7 @@ class System76PowerCLIWorkflow(Workflow):
                     self.artifacts.save_text(item_id, "verify", f"settled={settled} after={after} tolerance={tolerance} ok={ok}\nreadings={readings}\n", step="after_reboot")
                 except Exception:
                     pass
-            try:
-                marker = Path("/tmp/gui-testing-brightness-reboot-marker")
-                if marker.exists():
-                    marker.unlink()
-            except Exception:
-                pass
+
             return WorkflowResult(success=ok, item_id=item_id, summary=f"settled={settled} after={after} ok={ok}", data={"ok": ok, "after": after, "settled": settled, "readings": readings})
 
         # Safety: don't reboot again if resumed but no state.
@@ -644,10 +631,7 @@ class System76PowerCLIWorkflow(Workflow):
             log("[brightness_reboot] FAILED to persist state - aborting reboot")
             return WorkflowResult(success=False, item_id=item_id, summary="failed to persist state before reboot")
 
-        try:
-            Path("/tmp/gui-testing-brightness-reboot-marker").write_text(str(current), encoding="utf-8")
-        except Exception:
-            pass
+
 
 
         handler.setup_autologin()

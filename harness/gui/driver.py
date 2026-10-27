@@ -84,9 +84,17 @@ class GuiDriver:
                 self.artifacts.save_screenshot(
                     item_id, phase, screenshot.path, step=f"{step}_full"
                 )
+            except Exception as e:
+                import sys
+                print(f"[capture_and_detect] save_screenshot full failed: {e}", file=sys.stderr, flush=True)
+            try:
                 self.artifacts.save_screenshot(
                     item_id, phase, crop.path, step=f"{step}_active"
                 )
+            except Exception as e:
+                import sys
+                print(f"[capture_and_detect] save_screenshot active failed: {e}", file=sys.stderr, flush=True)
+            try:
                 self.artifacts.save_detection(
                     item_id,
                     phase,
@@ -98,7 +106,8 @@ class GuiDriver:
                     },
                     step=step,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                import sys
+                print(f"[capture_and_detect] save_detection failed: {e}", file=sys.stderr, flush=True)
 
         return result.value, result

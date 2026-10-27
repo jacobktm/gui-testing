@@ -497,22 +497,22 @@ class System76PowerGUIWorkflow(Workflow):
         'Balanced', 'Battery Saver' or 'Battery'.
         """
         if os_id == "ubuntu-26.04":
-            expected = {"power saver", "balanced", "performance"}
+            expected = {"performance", "balanced", "battery"}
             prompt = (
                 "Look at this screenshot of Ubuntu power settings. "
                 "What power mode is currently active? "
-                "Give me the response in just a single word: either "
-                "'Power Saver', 'Balanced', or 'Performance'."
+                "The GUI may show 'Performance', 'Balanced', or 'Power Saver'. "
+                "'Power Saver' means 'battery'. "
+                "Return ONLY the CLI name: 'performance', 'balanced', or 'battery'."
             )
         else:
-            expected = {"high performance", "performance", "balanced", "battery", "battery saver"}
+            expected = {"performance", "balanced", "battery"}
             prompt = (
                 "Look at this screenshot of the power settings. "
                 "What power profile is currently active? "
-                "The options are 'High Performance', 'Balanced', 'Battery', "
-                "or 'Battery Saver'. "
-                "Give me the response in just a single word or two, either "
-                "'High Performance', 'Balanced', 'Battery', or 'Battery Saver'."
+                "The GUI may show 'High Performance' (means 'performance'), "
+                "'Balanced', 'Battery', or 'Battery Saver' (means 'battery'). "
+                "Return ONLY the CLI name: 'performance', 'balanced', or 'battery'."
             )
 
         # Dismiss any open panels first by clicking center.
@@ -572,9 +572,9 @@ class System76PowerGUIWorkflow(Workflow):
 
         # Normalize: map GUI labels to CLI names.
         normalized = value.lower().strip()
-        if normalized in ("high performance",):
+        if normalized in ("high performance", "high-performance"):
             normalized = "performance"
-        elif normalized in ("battery saver",):
+        elif normalized in ("battery saver", "battery-saver", "power saver", "power-saver"):
             normalized = "battery"
 
         return WorkflowResult(

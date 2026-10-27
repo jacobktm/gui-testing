@@ -322,6 +322,12 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
 
+    # Track how many manifest entries existed before this test (for status update).
+    if call.when == "setup":
+        run = getattr(item.config, "_gui_run", None)
+        if run is not None:
+            item._manifest_count_before = len(run.manifest.tests)
+
     # Override outcome for tests completed in a previous run.
     stored_outcome = getattr(item, "_completed_outcome", None)
     if stored_outcome is not None and report.when == "call":
@@ -340,13 +346,17 @@ def pytest_runtest_makereport(item, call):
                 record_completed(run_dir, item.nodeid, outcome=report.outcome)
             except Exception:
                 pass
-            # Also update manifest status so report shows pass/fail not unknown.
-            try:
-                run = getattr(item.config, "_gui_run", None)
-                if run is not None:
-                    run.record_item(item.nodeid, status=report.outcome)
-            except Exception:
-                pass
+        # Update manifest entries created during this test.
+        try:
+            run = getattr(item.config, "_gui_run", None)
+            if run is not None:
+                before = getattr(item, "_manifest_count_before", 0)
+                for entry in run.manifest.tests[before:]:
+                    if entry.get("status", "unknown") == "unknown":
+                        entry["status"] = report.outcome
+                run._save()
+        except Exception:
+            pass
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):

@@ -255,11 +255,8 @@ class System76PowerCLIWorkflow(Workflow):
             in_progress = (progress.get("source"), progress.get("target")) == (source, target)
             phase = progress.get("phase", "start") if in_progress else "start"
 
-            # Safety: if resumed but no state found, don't reboot again.
-            import os as _os
-            if _os.environ.get("GUI_TESTING_RESUMED") == "1" and phase == "start" and not in_progress:
-                print(f"  [graphics] RESUMED but no state found for {source}->{target} - refusing to reboot", flush=True)
-                return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (no persisted state on resume)", data={"error": "no state on resume"})
+            # No guard needed - save_state is fixed. If state is missing on resume,
+            # the test runs as first invocation (saves state, reboots).
 
             current = handler.get_graphics_mode()
             print(f"  transition {source}->{target}: current (source) mode = {current!r}", flush=True)
@@ -558,10 +555,8 @@ class System76PowerCLIWorkflow(Workflow):
 
             return WorkflowResult(success=ok, item_id=item_id, summary=f"settled={settled} after={after} ok={ok}", data={"ok": ok, "after": after, "settled": settled, "readings": readings})
 
-        # Safety: don't reboot again if resumed but no state.
-        if os.environ.get("GUI_TESTING_RESUMED") == "1":
-            log("[brightness_reboot] RESUMED but no state - refusing to reboot")
-            return WorkflowResult(success=False, item_id=item_id, summary="no state on resume (loop prevented)")
+        # No guard needed - save_state is fixed. If state is missing on resume,
+        # the test runs as first invocation (saves state, reboots).
 
         # First invocation: set profile to performance (daemon sets brightness to max),
         # then set brightness to 50%, wait for stabilization.

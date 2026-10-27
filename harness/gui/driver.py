@@ -96,6 +96,75 @@ class GuiDriver:
                 pass
         return None
 
+    def detect_all_coordinates(
+        self,
+        labels: list[str],
+        *,
+        item_id: str | None = None,
+        phase: str = "detect",
+        step: str = "all_coords",
+        out_dir: Path | str | None = None,
+    ) -> dict[str, tuple[float, float]]:
+        """Use Ollama to find normalized coordinates for multiple UI elements at once.
+
+        Returns a dict mapping label -> (x, y). Missing labels are omitted.
+        """
+        out_dir = Path(out_dir) if out_dir is not None else Path("/tmp/opencode/gui")
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        shot_path = out_dir / f"screenshot_{phase}.png"
+        screenshot = capture(shot_path)
+
+        active_path = out_dir / f"active_{phase}.png"
+        crop = crop_active_display(screenshot, active_path)
+
+        label_list = ", ".join(f"'{l}'" for l in labels)
+        prompt = (
+            f"Look at this screenshot of system settings. "
+            f"For each of these UI elements: {label_list}, "
+            f"return their center coordinates as normalized values (0.0 to 1.0). "
+            f"Format: label=x,y on separate lines. "
+            f"Example:\nHigh Performance=0.95,0.24\nBalanced=0.95,0.18\n"
+            f"Only return coordinates, nothing else."
+        )
+
+        response = None
+        try:
+            if self.ollama.client and self.ollama.model:
+                response = self.ollama.send_message(prompt, [str(crop.path)])
+        except Exception:
+            response = None
+
+        result = {}
+        if response:
+            import re
+            for line in response.strip().splitlines():
+                # Match "label=x,y" or "label: x, y" or "label x y"
+                m = re.match(r"(.+?)\s*[=:]\s*(\d+\.?\d*)\s*[,\s]\s*(\d+\.?\d*)", line.strip())
+                if m:
+                    label = m.group(1).strip().strip(chr(39) + chr(34))
+                    try:
+                        x = float(m.group(2))
+                        y = float(m.group(3))
+                        if 0 <= x <= 1 and 0 <= y <= 1:
+                            result[label] = (x, y)
+                    except ValueError:
+                        pass
+
+        if self.artifacts is not None and item_id:
+            try:
+                self.artifacts.save_text(
+                    item_id, phase,
+                    f"labels={labels}\ncoords={result}\nresponse={response}\n",
+                    step=step,
+                )
+            except Exception:
+                pass
+
+        import sys
+        print(f"[detect_all_coordinates] {result}", file=sys.stderr, flush=True)
+        return result
+
     def capture_and_detect(
         self,
         prompt: str,

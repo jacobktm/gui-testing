@@ -494,6 +494,7 @@ class System76PowerCLIWorkflow(Workflow):
             print(msg, file=sys.stderr, flush=True)
 
         # Load persisted state.
+        log(f"[brightness_reboot] artifacts={self.artifacts is not None} run_dir={getattr(self.artifacts, 'run_dir', None) if self.artifacts else None}")
         state = self.load_persisted_state(item_id, phase="state")
         log(f"[brightness_reboot] loaded state: {state}")
         if state is None and self.artifacts is not None:

@@ -34,6 +34,8 @@ class TestSystem76PowerGUI:
         except Exception:
             pass  # Permission dialog may block; that's expected on first run
         # Wait for permission dialog, then try to dismiss/allow.
+        # Note: dotool may not work in the permission dialog context.
+        # The D-Bus pre-grant should prevent the dialog from appearing.
         import time
         time.sleep(5)
         # Try multiple methods to dismiss the permission dialog.
@@ -52,6 +54,12 @@ class TestSystem76PowerGUI:
         except Exception:
             pass
         time.sleep(2)
+        # Re-grant permission in case it was revoked.
+        try:
+            from harness.screenshots.screenshot import grant_screenshot_permission
+            grant_screenshot_permission()
+        except Exception:
+            pass
 
     def test_open_power_settings(self, artifacts):
         wf = System76PowerGUIWorkflow(artifacts=artifacts)

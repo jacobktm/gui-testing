@@ -191,8 +191,12 @@ def capture(
     poll_interval: float = 0.1,
 ) -> Screenshot:
     destination = Path(destination)
+    # Overwrite if exists (tests may re-run).
     if destination.exists():
-        raise ScreenshotError(f"destination already exists: {destination}")
+        try:
+            destination.unlink()
+        except OSError:
+            pass
 
     tool = resolve_screenshot_tool(tool)
     config = SCREENSHOT_TOOLS[tool]

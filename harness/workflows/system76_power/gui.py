@@ -415,7 +415,7 @@ class System76PowerGUIWorkflow(Workflow):
             data={"graphics": value, "normalized": result.normalized},
         )
 
-    def ensure_max_brightness(self, item_id: str = "gnome.brightness_setup") -> WorkflowResult:
+    def ensure_max_brightness(self, item_id: str = "brightness.setup") -> WorkflowResult:
         max_b = self.brightness.maximum()
         if max_b is None:
             return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
@@ -428,10 +428,10 @@ class System76PowerGUIWorkflow(Workflow):
                 pass
         return WorkflowResult(success=ok, item_id=item_id, summary=f"brightness={b}/{max_b}", data={"brightness": b, "max": max_b})
 
-    def set_brightness_max(self, item_id: str = "gnome.brightness_max") -> WorkflowResult:
+    def set_brightness_max(self, item_id: str = "brightness.max") -> WorkflowResult:
         return self.ensure_max_brightness(item_id=item_id)
 
-    def set_brightness_min(self, item_id: str = "gnome.brightness_min") -> WorkflowResult:
+    def set_brightness_min(self, item_id: str = "brightness.min") -> WorkflowResult:
         ok = self.brightness.brightness_down_to_min()
         b = self.brightness.current()
         m = self.brightness.maximum()
@@ -442,7 +442,7 @@ class System76PowerGUIWorkflow(Workflow):
                 pass
         return WorkflowResult(success=ok, item_id=item_id, summary=f"brightness={b}/{m}", data={"brightness": b, "max": m})
 
-    def get_brightness(self, item_id: str = "gnome.brightness_get") -> WorkflowResult:
+    def get_brightness(self, item_id: str = "brightness.get") -> WorkflowResult:
         b = self.brightness.current()
         m = self.brightness.maximum()
         if self.artifacts is not None and item_id:

@@ -6,9 +6,7 @@ from harness.brightness import BrightnessHandler
 from handlers.system76_power import System76Power
 
 
-@pytest.mark.gnome
-@pytest.mark.cosmic
-class TestGNOMEBrightness:
+class TestBrightness:
     def test_brightness_balanced_max(self, artifacts):
         b = BrightnessHandler()
         s = System76Power(artifacts=artifacts)
@@ -20,7 +18,7 @@ class TestGNOMEBrightness:
         cur = b.current()
         if artifacts:
             try:
-                artifacts.save_text("gnome.brightness_balanced_max", "verify", f"brightness={cur}/{max_b}\n", step="check")
+                artifacts.save_text("brightness.balanced_max", "verify", f"brightness={cur}/{max_b}\n", step="check")
             except Exception:
                 pass
         # Should drop to ~50% when going to balanced from max
@@ -38,7 +36,7 @@ class TestGNOMEBrightness:
         cur = b.current()
         if artifacts:
             try:
-                artifacts.save_text("gnome.brightness_battery_max", "verify", f"brightness={cur}/{max_b}\n", step="check")
+                artifacts.save_text("brightness.battery_max", "verify", f"brightness={cur}/{max_b}\n", step="check")
             except Exception:
                 pass
         assert cur is not None
@@ -56,7 +54,7 @@ class TestGNOMEBrightness:
         cur = b.current()
         if artifacts:
             try:
-                artifacts.save_text("gnome.brightness_balanced_min", "verify", f"before={before} after={cur}/{max_b}\n", step="check")
+                artifacts.save_text("brightness.balanced_min", "verify", f"before={before} after={cur}/{max_b}\n", step="check")
             except Exception:
                 pass
         assert cur == before
@@ -94,7 +92,7 @@ Applies to both GNOME and COSMIC desktops.
         after = b.current()
         if artifacts:
             try:
-                artifacts.save_text("gnome.brightness_daemon_restart", "verify", f"before={before} after={after}/{max_b}\n", step="check")
+                artifacts.save_text("brightness.daemon_restart", "verify", f"before={before} after={after}/{max_b}\n", step="check")
             except Exception:
                 pass
         assert after is not None

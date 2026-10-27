@@ -231,6 +231,13 @@ class TestSystem76PowerGUI:
             assert res.success, res.summary
             import time
             time.sleep(3)
+            # Click center screen between checks to dismiss pop-ups.
+            try:
+                from harness.dotool import send_keys
+                send_keys("key esc\n")
+            except Exception:
+                pass
+            time.sleep(1)
             handler = System76Power(artifacts=artifacts)
             current = handler.get_perf_profile()
             assert current == target, f"expected profile {target}, got {current}"

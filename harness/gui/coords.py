@@ -43,3 +43,49 @@ class Coords:
         **POP22_PROFILES,
         **{f"graphics_{k}": v for k, v in POP22_GRAPHICS.items()},
     }
+
+
+# Source resolutions for hardcoded coordinates.
+COORD_SOURCE = {
+    "pop-22.04": (1920, 1080),   # 16:9
+    "pop-24.04": (1920, 1080),   # 16:9
+    "ubuntu-26.04": (1920, 1200), # 16:10
+}
+
+
+def get_display_resolution() -> tuple[int, int]:
+    """Return (width, height) of the primary display."""
+    try:
+        from .display import get_monitors
+        monitors = get_monitors()
+        if monitors:
+            m = monitors[0]
+            return (m["width"], m["height"])
+    except Exception:
+        pass
+    # Fallback: assume 1920x1080.
+    return (1920, 1080)
+
+
+def adjust_coords(
+    coords: tuple[float, float],
+    src: tuple[int, int],
+    dst: tuple[int, int] | None = None,
+) -> tuple[float, float]:
+    """Adjust normalized coordinates from source resolution to destination.
+
+    If the UI uses fixed pixel positions, normalized coords change with
+    resolution.  This converts from the resolution the coords were measured
+    on to the actual display resolution.
+    """
+    if dst is None:
+        dst = get_display_resolution()
+    src_w, src_h = src
+    dst_w, dst_h = dst
+    if src_w == dst_w and src_h == dst_h:
+        return coords
+    x, y = coords
+    # Convert normalized -> pixels -> normalized.
+    px = x * src_w
+    py = y * src_h
+    return (px / dst_w, py / dst_h)

@@ -5,6 +5,7 @@ from handlers.system76_power import System76Power
 
 from ...dotool import click, send_keys
 from ...gui import Coords, GuiDriver
+from ...gui.coords import adjust_coords, COORD_SOURCE
 from ..base import Workflow, WorkflowResult
 
 
@@ -40,7 +41,8 @@ class System76PowerGUIWorkflow(Workflow):
                             print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
                 if not clicked:
                     # Fallback to hardcoded.
-                    self.driver.click_at(Coords.OPEN)
+                    _src = COORD_SOURCE.get(os_id, (1920, 1080))
+                    self.driver.click_at(adjust_coords(Coords.OPEN, _src))
                 time.sleep(2)
                 # Now click battery icon in the popup menu.
                 coords2 = self.driver.detect_all_coordinates(
@@ -61,7 +63,8 @@ class System76PowerGUIWorkflow(Workflow):
                     # Fallback to hardcoded extra click.
                     try:
                         extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
-                        self.driver.click_at(extra)
+                        _src = COORD_SOURCE.get(os_id, (1920, 1080))
+                        self.driver.click_at(adjust_coords(extra, _src))
                     except Exception:
                         pass
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
@@ -82,7 +85,8 @@ class System76PowerGUIWorkflow(Workflow):
                         except Exception as e:
                             print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
                 if not clicked:
-                    self.driver.click_at(Coords.OPEN)
+                    _src = COORD_SOURCE.get(os_id, (1920, 1080))
+                    self.driver.click_at(adjust_coords(Coords.OPEN, _src))
                 time.sleep(2)
                 coords2 = self.driver.detect_all_coordinates(
                     ["battery", "power", "power settings"],
@@ -102,7 +106,8 @@ class System76PowerGUIWorkflow(Workflow):
                     try:
                         extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
                         if extra:
-                            self.driver.click_at(extra)
+                            _src = COORD_SOURCE.get(os_id, (1920, 1080))
+                            self.driver.click_at(adjust_coords(extra, _src))
                     except Exception:
                         pass
             else:
@@ -126,7 +131,8 @@ class System76PowerGUIWorkflow(Workflow):
                             print(f"[open_power_settings] click {label} failed: {e}", file=sys.stderr, flush=True)
                 if not clicked:
                     # Fallback to hardcoded.
-                    self.driver.click_at(Coords.OPEN)
+                    _src = COORD_SOURCE.get(os_id, (1920, 1080))
+                    self.driver.click_at(adjust_coords(Coords.OPEN, _src))
             time.sleep(3)
         except Exception as exc:
             print(f"[open_power_settings] FAILED: {exc}", file=sys.stderr, flush=True)
@@ -200,11 +206,14 @@ class System76PowerGUIWorkflow(Workflow):
             import time
             time.sleep(3)
             if os_id == "pop-22.04":
-                coords = Coords.POP22_PROFILES.get(profile)
+                raw_coords = Coords.POP22_PROFILES.get(profile)
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                coords = Coords.UBUNTU_26.get(f"profile_{profile}")
+                raw_coords = Coords.UBUNTU_26.get(f"profile_{profile}")
             else:
-                coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
+                raw_coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
+            # Adjust for display aspect ratio.
+            src = COORD_SOURCE.get(os_id, (1920, 1080))
+            coords = adjust_coords(raw_coords, src) if raw_coords else None
             # Try Ollama coordinate detection first, but validate against hardcoded.
             ollama_coords = self._get_profile_coords_ollama(profile, os_id, item_id=item_id)
             if ollama_coords is not None:
@@ -254,8 +263,10 @@ class System76PowerGUIWorkflow(Workflow):
         try:
             self.open_power_settings(os_id)
             if os_id == "pop-22.04":
-                coords = Coords.POP22_GRAPHICS.get(mode)
-                if coords:
+                raw_coords = Coords.POP22_GRAPHICS.get(mode)
+                if raw_coords:
+                    src = COORD_SOURCE.get(os_id, (1920, 1080))
+                    coords = adjust_coords(raw_coords, src)
                     self.driver.click_at(coords)
             if self.artifacts and item_id:
                 try:

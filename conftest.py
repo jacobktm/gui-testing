@@ -340,6 +340,13 @@ def pytest_runtest_makereport(item, call):
                 record_completed(run_dir, item.nodeid, outcome=report.outcome)
             except Exception:
                 pass
+            # Also update manifest status so report shows pass/fail not unknown.
+            try:
+                run = getattr(item.config, "_gui_run", None)
+                if run is not None:
+                    run.record_item(item.nodeid, status=report.outcome)
+            except Exception:
+                pass
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):

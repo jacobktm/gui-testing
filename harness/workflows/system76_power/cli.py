@@ -552,13 +552,31 @@ class System76PowerCLIWorkflow(Workflow):
             log("[brightness_reboot] RESUMED but no state - refusing to reboot")
             return WorkflowResult(success=False, item_id=item_id, summary="no state on resume (loop prevented)")
 
-        # First invocation: set brightness to 50%, reboot.
+        # First invocation: set profile to performance (daemon sets brightness to max),
+        # then set brightness to 50%, wait for stabilization.
+        handler.switch_perf_profile("performance")
+        time.sleep(2)
         bh = BrightnessHandler()
         bh.set_brightness_percent(50)
-        time.sleep(2)
-        current = get_brightness()
+        # Wait for brightness to stabilize (daemon may adjust).
+        readings_before = []
+        prev = None
+        stable_count = 0
+        for i in range(15):
+            time.sleep(2)
+            val = get_brightness()
+            readings_before.append(val)
+            log(f"[brightness_reboot] before reading {i}: {val}")
+            if val is not None and val == prev:
+                stable_count += 1
+                if stable_count >= 3:
+                    break
+            else:
+                stable_count = 0
+            prev = val
+        current = readings_before[-1] if readings_before else get_brightness()
         max_b = get_max_brightness()
-        log(f"[brightness_reboot] first invocation, brightness={current}/{max_b} (set to 50%)")
+        log(f"[brightness_reboot] first invocation, settled brightness={current}/{max_b} readings={readings_before}")
         if current is None:
             return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
 
@@ -567,10 +585,10 @@ class System76PowerCLIWorkflow(Workflow):
         except Exception:
             boot_id_before = None
 
-        self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current})
+        self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current, "profile": "performance"})
         if self.artifacts is not None and item_id:
             try:
-                self.artifacts.save_text(item_id, "setup", f"brightness={current}/{max_b}\n", step="before_reboot")
+                self.artifacts.save_text(item_id, "setup", f"profile=performance brightness={current}/{max_b}\nreadings={readings_before}\n", step="before_reboot")
             except Exception as e:
                 log(f"[brightness_reboot] save_text failed: {e}")
         try:

@@ -62,10 +62,10 @@ class GuiDriver:
 
         prompt = (
             f"Look at this screenshot of system settings. "
-            f"Find the UI element labeled '{label}'. "
-            f"Return ONLY the center coordinates as two decimal numbers "
-            f"between 0.0 and 1.0, in the format: x,y "
-            f"(e.g., 0.5,0.3). Do not include any other text."
+            f"Find the button or menu item labeled '{label}'. "
+            f"Return ONLY its center position as two numbers between 0.0 and 1.0. "
+            f"Format: x,y (for example: 0.95,0.24). "
+            f"Do not include any other text or explanation."
         )
 
         response = None

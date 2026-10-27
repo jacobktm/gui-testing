@@ -196,10 +196,21 @@ class System76PowerGUIWorkflow(Workflow):
                 coords = Coords.UBUNTU_26.get(f"profile_{profile}")
             else:
                 coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
-            # Try Ollama coordinate detection first.
+            # Try Ollama coordinate detection first, but validate against hardcoded.
             ollama_coords = self._get_profile_coords_ollama(profile, os_id, item_id=item_id)
             if ollama_coords is not None:
-                coords = ollama_coords
+                if coords is not None:
+                    dx = abs(ollama_coords[0] - coords[0])
+                    dy = abs(ollama_coords[1] - coords[1])
+                    if dx <= 0.15 and dy <= 0.15:
+                        coords = ollama_coords
+                        import sys
+                        print(f"[set_power_profile_gui] using Ollama coords {ollama_coords}", file=sys.stderr, flush=True)
+                    else:
+                        import sys
+                        print(f"[set_power_profile_gui] Ollama coords {ollama_coords} too far from hardcoded {coords}, using hardcoded", file=sys.stderr, flush=True)
+                else:
+                    coords = ollama_coords
             if coords:
                 import sys
                 print(f"[set_power_profile_gui] clicking profile {profile} at {coords}", file=sys.stderr, flush=True)

@@ -38,6 +38,7 @@ class GuiDriver:
         self,
         label: str,
         *,
+        reference: tuple[float, float] | None = None,
         item_id: str | None = None,
         phase: str = "detect",
         step: str = "coordinates",
@@ -60,9 +61,14 @@ class GuiDriver:
         import time as _t
         _t.sleep(15)
 
+        if reference is not None:
+            ref_hint = f"The approximate position is ({reference[0]:.2f}, {reference[1]:.2f}). Adjust if needed for this display. "
+        else:
+            ref_hint = ""
         prompt = (
             f"Look at this screenshot of system settings. "
             f"Find the button or menu item labeled '{label}'. "
+            f"{ref_hint}"
             f"Return ONLY its center position as two numbers between 0.0 and 1.0. "
             f"Format: x,y (for example: 0.95,0.24). "
             f"Do not include any other text or explanation."
@@ -104,6 +110,7 @@ class GuiDriver:
         self,
         labels: list[str],
         *,
+        references: dict[str, tuple[float, float]] | None = None,
         item_id: str | None = None,
         phase: str = "detect",
         step: str = "all_coords",
@@ -127,10 +134,19 @@ class GuiDriver:
         _t.sleep(15)
 
         label_list = ", ".join(f"'{l}'" for l in labels)
+        ref_hint = ""
+        if references:
+            ref_lines = []
+            for l in labels:
+                if l in references:
+                    ref_lines.append(f"  {l}: approx ({references[l][0]:.2f}, {references[l][1]:.2f})")
+            if ref_lines:
+                ref_hint = "Approximate positions (adjust for this display):\n" + "\n".join(ref_lines) + "\n"
         prompt = (
             f"Look at this screenshot of system settings. "
             f"For each of these UI elements: {label_list}, "
             f"return their center coordinates as normalized values (0.0 to 1.0). "
+            f"{ref_hint}"
             f"Format: label=x,y on separate lines. "
             f"Example:\nHigh Performance=0.95,0.24\nBalanced=0.95,0.18\n"
             f"Only return coordinates, nothing else."

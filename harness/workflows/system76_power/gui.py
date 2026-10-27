@@ -109,6 +109,7 @@ class System76PowerGUIWorkflow(Workflow):
                 # Pop!_OS 24.04 (COSMIC): click battery icon in panel.
                 coords = self.driver.detect_all_coordinates(
                     ["battery", "power", "battery icon"],
+                    references={"battery": (0.955, 0.13), "power": (0.955, 0.014)},
                     item_id="gui.power_settings_open",
                     phase="detect",
                     step="open_coords",
@@ -169,9 +170,17 @@ class System76PowerGUIWorkflow(Workflow):
             "battery": "Battery",
         }
         label = label_map.get(profile, profile)
+        # Get hardcoded reference for this profile.
+        if os_id == "pop-22.04":
+            ref = Coords.POP22_PROFILES.get(profile)
+        elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+            ref = Coords.UBUNTU_26.get(f"profile_{profile}")
+        else:
+            ref = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
         try:
             coords = self.driver.detect_coordinates(
                 label,
+                reference=ref,
                 item_id=item_id,
                 phase="detect",
                 step="profile_coords",

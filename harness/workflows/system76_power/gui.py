@@ -49,6 +49,56 @@ class System76PowerGUIWorkflow(Workflow):
             data={"os_id": os_id},
         )
 
+    def transition_to_performance(self, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transition.to_performance") -> WorkflowResult:
+        """Ensure starting from performance profile (known starting point)."""
+        from handlers.system76_power import System76Power
+        handler = System76Power(artifacts=self.artifacts)
+        current = handler.get_perf_profile()
+        if current == "performance":
+            return WorkflowResult(success=True, item_id=item_id, summary="already performance", data={"profile": "performance"})
+        res = self.set_power_profile_gui("performance", os_id=os_id, item_id=item_id)
+        if not res.success:
+            return res
+        import time
+        time.sleep(2)
+        handler2 = System76Power(artifacts=self.artifacts)
+        actual = handler2.get_perf_profile()
+        verified = (actual == "performance")
+        return WorkflowResult(success=verified, item_id=item_id, summary=f"to_performance (actual: {actual})", data={"profile": actual, "verified": verified})
+
+    def transition_perf_profile(self, source: str, target: str, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transition") -> WorkflowResult:
+        """Transition from source to target power profile via GUI and verify CLI+GUI agreement."""
+        import sys
+        print(f"[transition_perf_profile] {source}->{target} os_id={os_id}", file=sys.stderr, flush=True)
+        from handlers.system76_power import System76Power
+        res = self.set_power_profile_gui(target, os_id=os_id, item_id=item_id)
+        print(f"[transition_perf_profile] set_power_profile_gui: success={res.success} summary={res.summary}", file=sys.stderr, flush=True)
+        if not res.success:
+            return res
+        import time
+        time.sleep(3)
+        handler = System76Power(artifacts=self.artifacts)
+        actual = handler.get_perf_profile()
+        print(f"[transition_perf_profile] CLI profile after: {actual} (target={target})", file=sys.stderr, flush=True)
+        verified = (actual == target)
+        # Also verify via GUI detection
+        gui_verified = None
+        try:
+            det = self.detect_power_profile(os_id=os_id)
+            if det.success:
+                detected = (det.data or {}).get("profile", "").lower()
+                gui_verified = (detected == target.lower())
+        except Exception:
+            gui_verified = None
+        if gui_verified is not None:
+            verified = verified and gui_verified
+        return WorkflowResult(
+            success=verified,
+            item_id=item_id,
+            summary=f"{source}->{target} (cli={actual}, gui={gui_verified})",
+            data={"from": source, "to": target, "cli": actual, "gui_verified": gui_verified, "verified": verified},
+        )
+
     def dismiss_menus(self):
         # Try ESC keys (may not work on COSMIC, but harmless)
         try:
@@ -69,10 +119,12 @@ class System76PowerGUIWorkflow(Workflow):
 
 
     def set_power_profile_gui(self, profile: str, os_id: str, item_id: str = "gui.power_profile_switch") -> WorkflowResult:
+        import sys
         try:
+            print(f"[set_power_profile_gui] profile={profile} os_id={os_id}", file=sys.stderr, flush=True)
             self.open_power_settings(os_id)
             import time
-            time.sleep(3)
+            time.sleep(5)
             if os_id == "pop-22.04":
                 raw_coords = Coords.POP22_PROFILES.get(profile)
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
@@ -82,6 +134,7 @@ class System76PowerGUIWorkflow(Workflow):
             # Adjust for display aspect ratio.
             src = COORD_SOURCE.get(os_id, (1920, 1080))
             coords = adjust_coords(raw_coords, src) if raw_coords else None
+            print(f"[set_power_profile_gui] raw={raw_coords} adjusted={coords} src={src}", file=sys.stderr, flush=True)
             if coords:
                 import sys
                 print(f"[set_power_profile_gui] clicking profile {profile} at {coords}", file=sys.stderr, flush=True)

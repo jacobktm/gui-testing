@@ -496,8 +496,13 @@ class System76PowerCLIWorkflow(Workflow):
 
         if not has_saved_before:
             # First invocation: save brightness and reboot.
+            # Set brightness to 50% to have a known non-trivial value to verify.
+            from harness.brightness import BrightnessHandler
+            bh = BrightnessHandler()
+            bh.set_brightness_percent(50)
+            time.sleep(2)
             before = get_brightness()
-            log(f"[brightness_reboot] first invocation, brightness={before}")
+            log(f"[brightness_reboot] first invocation, brightness={before} (set to 50%)")
             if before is None:
                 # Fallback: try sysfs directly
                 try:

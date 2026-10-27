@@ -100,19 +100,23 @@ class GuiDriver:
 
         if self.artifacts is not None and item_id:
             try:
-                self.artifacts.save_screenshot(
+                art = self.artifacts.save_screenshot(
                     item_id, phase, screenshot.path, step=f"{step}_full"
                 )
+                import sys
+                print(f"[capture_and_detect] saved full screenshot: {art.path}", file=sys.stderr, flush=True)
             except Exception as e:
                 import sys
-                print(f"[capture_and_detect] save_screenshot full failed: {e}", file=sys.stderr, flush=True)
+                print(f"[capture_and_detect] save_screenshot full FAILED: {e}", file=sys.stderr, flush=True)
             try:
-                self.artifacts.save_screenshot(
+                art = self.artifacts.save_screenshot(
                     item_id, phase, crop.path, step=f"{step}_active"
                 )
+                import sys
+                print(f"[capture_and_detect] saved active screenshot: {art.path}", file=sys.stderr, flush=True)
             except Exception as e:
                 import sys
-                print(f"[capture_and_detect] save_screenshot active failed: {e}", file=sys.stderr, flush=True)
+                print(f"[capture_and_detect] save_screenshot active FAILED: {e}", file=sys.stderr, flush=True)
             try:
                 self.artifacts.save_detection(
                     item_id,

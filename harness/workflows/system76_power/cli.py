@@ -679,6 +679,8 @@ class System76PowerCLIWorkflow(Workflow):
         if not res.success:
             return WorkflowResult(success=False, item_id=item_id, summary=f"detect failed: {res.summary}", data=res.data)
         detected = (res.data or {}).get("profile", "").lower()
+        import sys
+        print(f"[verify_cli_profile] target={target} detected={detected} raw_data={res.data}", file=sys.stderr, flush=True)
         verified = (detected == target.lower())
         # Persist result for aggregation.
         self.persist_state(item_id, "state", {

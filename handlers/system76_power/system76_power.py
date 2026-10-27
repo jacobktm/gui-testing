@@ -364,15 +364,13 @@ class System76Power:
             self._run(['sync'], check=False, timeout=10)
         except Exception:
             pass
-        # Create a marker file in /tmp.  /tmp is tmpfs and is cleared on
-        # reboot, so its absence after wait_for_boot confirms the reboot
-        # actually happened.
-        marker = Path("/tmp/gui-testing-reboot-marker")
+        # Record boot ID before reboot.  /proc/sys/kernel/random/boot_id
+        # changes on every boot, so comparing before/after reliably detects
+        # whether a reboot actually happened (works across process boundaries).
         try:
-            marker.write_text("reboot_pending", encoding="utf-8")
-            self._reboot_marker = marker
+            self._boot_id_before = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
         except Exception:
-            self._reboot_marker = None
+            self._boot_id_before = None
 
         # Try each method until one actually reboots the system.
         # systemctl reboot can return 0 without rebooting on some systems
@@ -415,10 +413,17 @@ class System76Power:
         time.sleep(15)
         deadline = time.time() + timeout
         elapsed = 0
-        marker = getattr(self, "_reboot_marker", None)
+        boot_id_before = getattr(self, "_boot_id_before", None)
         while time.time() < deadline:
-            # Check if the reboot marker was cleared (confirms reboot happened).
-            rebooted = marker is not None and not Path(marker).exists()
+            # Check if boot ID changed (confirms reboot happened).
+            rebooted = False
+            try:
+                boot_id_after = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+                if boot_id_before is not None and boot_id_after != boot_id_before:
+                    rebooted = True
+                    print(f"  Reboot confirmed (boot ID changed)", flush=True)
+            except Exception:
+                pass
             try:
                 state = self._run(['systemctl', 'is-system-running'], check=False)
                 status = (state.get('stdout') or '').strip() if state else ''
@@ -426,16 +431,10 @@ class System76Power:
                 # Accept 'running' (rc=0) and 'degraded' (failed units but
                 # booted) so a non-critical failed unit doesn't block tests.
                 if status in ('running', 'degraded') or (rc == 0 and status):
-                    if marker is not None and not rebooted:
-                        print(f"  Warning: reboot marker still present, system may not have rebooted", flush=True)
+                    if not rebooted and boot_id_before is not None:
+                        print(f"  Warning: boot ID unchanged, system may not have rebooted", flush=True)
                     else:
                         print(f"  System rebooted and is {status} (after {elapsed}s)", flush=True)
-                    # Clean up marker.
-                    try:
-                        if marker is not None and Path(marker).exists():
-                            Path(marker).unlink()
-                    except Exception:
-                        pass
                     return True
                 if status:
                     print(f"  ... {status} ({elapsed}s)", flush=True, end='\r')

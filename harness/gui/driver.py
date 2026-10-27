@@ -48,7 +48,9 @@ class GuiDriver:
         out_dir = Path(out_dir) if out_dir is not None else Path("/tmp/opencode/gui")
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        shot_path = out_dir / f"screenshot_{phase}.png"
+        import time as _t
+        _ts = int(_t.time() * 1000)
+        shot_path = out_dir / f"screenshot_{phase}_{_ts}.png"
         import sys
         print(f"[capture_and_detect] capturing to {shot_path}", file=sys.stderr, flush=True)
         try:
@@ -58,7 +60,7 @@ class GuiDriver:
             print(f"[capture_and_detect] capture FAILED: {e}", file=sys.stderr, flush=True)
             raise
 
-        active_path = out_dir / f"active_{phase}.png"
+        active_path = out_dir / f"active_{phase}_{_ts}.png"
         try:
             crop = crop_active_display(
                 screenshot,

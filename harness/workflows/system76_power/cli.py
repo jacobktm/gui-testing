@@ -642,33 +642,57 @@ class System76PowerCLIWorkflow(Workflow):
             data={"target": target, "detected": detected, "verified": verified},
         )
 
-    def verify_all_cli_profiles_reflected_in_extension(self, item_id: str = "cli.profile_reflected", os_id: str = None) -> WorkflowResult:
-        """Verify that power profile changes from CLI are reflected in the extension.
+    def verify_all_cli_profiles_reflected_in_extension(self, item_id: str = "cli.profile_reflected") -> WorkflowResult:
+        """Aggregate: check that all CLI power profile changes were reflected in extension.
 
-        Runs all 3 profile checks (performance, balanced, battery) and returns
-        overall success.
+        Does NOT run any transitions itself. Instead checks persisted state from
+        the individual transition tests.
         """
-        import os as _os
-        if os_id is None:
-            os_id = _os.environ.get("TEST_OS_ID") or _os.environ.get("OS_ID") or "pop-24.04"
+        # All individual test item_ids and their target profiles.
+        transitions = [
+            ("performance_to_balanced", "balanced"),
+            ("balanced_to_battery", "battery"),
+            ("battery_to_performance", "performance"),
+            ("performance_to_battery", "battery"),
+            ("battery_to_balanced", "balanced"),
+            ("balanced_to_performance", "performance"),
+        ]
 
-        targets = ["performance", "balanced", "battery"]
-        results = []
-        all_ok = True
-        for target in targets:
-            res = self.verify_cli_profile_reflected_in_extension(target, os_id=os_id, item_id=f"{item_id}.{target}")
-            verified = res.success
-            if not verified:
-                all_ok = False
-            results.append({"target": target, "verified": verified, "summary": res.summary})
+        # For each target profile, check if at least one transition verified.
+        target_verified = {"performance": False, "balanced": False, "battery": False}
+        target_details = {"performance": [], "balanced": [], "battery": []}
+        any_ran = False
+        for trans_name, target in transitions:
+            trans_item_id = f"{item_id}.{trans_name}"
+            state = self.load_persisted_state(trans_item_id, phase="state")
+            verified = None
+            if isinstance(state, dict):
+                verified = state.get("verified")
+            if verified is not None:
+                any_ran = True
+                if verified:
+                    target_verified[target] = True
+                target_details[target].append({"transition": trans_name, "verified": verified})
 
-        failed = [r for r in results if not r["verified"]]
-        summary = f"profile_reflected: {len(results) - len(failed)}/{len(results)} passed"
+        if not any_ran:
+            return WorkflowResult(
+                success=True,
+                item_id=item_id,
+                summary="no profile verification data (transitions not run)",
+                data={"target_verified": target_verified, "skipped": True},
+            )
+
+        all_ok = all(target_verified.values())
+        results = [{"target": t, "verified": v, "details": target_details[t]} for t, v in target_verified.items()]
+        failed = [t for t, v in target_verified.items() if not v]
+        summary = f"profile_reflected: {sum(target_verified.values())}/3 profiles verified"
+        if failed:
+            summary += f" (missing: {', '.join(failed)})"
         return WorkflowResult(
             success=all_ok,
             item_id=item_id,
             summary=summary,
-            data={"results": results},
+            data={"results": results, "target_verified": target_verified},
         )
 
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:

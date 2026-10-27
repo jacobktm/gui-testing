@@ -294,10 +294,8 @@ class TestSystem76PowerCLIFull:
         """Test that any power profile change from CLI is reflected in the extension."""
         from harness.workflows import System76PowerCLIWorkflow
 
-        import os
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.verify_all_cli_profiles_reflected_in_extension(item_id="cli.profile_reflected", os_id=os_id)
+        res = wf.verify_all_cli_profiles_reflected_in_extension(item_id="cli.profile_reflected")
         if (res.data or {}).get("skipped"):
             return
         assert res.success, res.summary

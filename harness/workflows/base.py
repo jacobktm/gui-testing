@@ -39,13 +39,15 @@ class Workflow:
         *,
         step: str = "state",
     ) -> None:
-        """Best-effort persistence of named state via the artifacts store."""
+        """Persist named state via the artifacts store."""
         if self.artifacts is None or not item_id:
+            print(f"  [persist_state] skipped: artifacts={self.artifacts is not None} item_id={item_id}", flush=True)
             return
         try:
             self.artifacts.save_state(item_id, phase, state, step=step)
-        except Exception:
-            pass
+            print(f"  [persist_state] saved {item_id}/{phase}", flush=True)
+        except Exception as e:
+            print(f"  [persist_state] FAILED: {e}", flush=True)
 
     def load_persisted_state(self, item_id: str, phase: str = "state") -> dict[str, Any] | None:
         """Load the newest persisted state document for an item/phase, if any."""

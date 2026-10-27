@@ -471,7 +471,12 @@ class System76PowerCLIWorkflow(Workflow):
         )
 
     def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:
-        """Verify screen brightness is preserved across a system reboot."""
+        """Verify screen brightness is preserved across a system reboot.
+
+        Uses a /tmp marker file to track reboot state (tmpfs is cleared on
+        reboot).  First invocation saves brightness, creates marker, reboots.
+        Resumed invocation (marker gone) reads brightness after and compares.
+        """
         from harness.brightness import get_brightness
 
         handler = System76Power(
@@ -481,33 +486,41 @@ class System76PowerCLIWorkflow(Workflow):
             artifacts=self.artifacts,
         )
 
-        progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
-        phase = progress.get("phase", "before")
-        print(f"  [brightness_reboot] item_id={item_id} phase={phase} progress={progress}", flush=True)
-        print(f"  [brightness_reboot] artifacts={self.artifacts is not None} run_dir={getattr(self.artifacts, 'run_dir', None)}", flush=True)
+        marker = Path("/tmp/gui-testing-brightness-reboot-marker")
+        # If marker exists, we haven't rebooted yet (first invocation).
+        # If marker is gone, we've rebooted (resumed invocation).
+        already_rebooted = not marker.exists()
 
-        if phase == "before":
-            # First invocation: save brightness and reboot.
+        progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
+
+        if not already_rebooted and not progress.get("done"):
+            # First invocation: save brightness, create marker, reboot.
             before = get_brightness()
             if before is None:
                 return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
-            # Save state with phase="after" so resumed run knows to compare.
             self.persist_state(
                 item_id, "state",
-                {"kind": "brightness_restart", "before": before, "phase": "after"},
+                {"kind": "brightness_restart", "before": before, "phase": "after", "done": False},
             )
             if self.artifacts is not None and item_id:
                 try:
                     self.artifacts.save_text(item_id, "setup", "brightness_before=" + str(before) + "\n", step="before_reboot")
                 except Exception:
                     pass
+            try:
+                marker.write_text(str(before), encoding="utf-8")
+            except Exception:
+                pass
             handler.setup_autologin()
             handler.reboot()
             handler.wait_for_boot()
             return WorkflowResult(success=True, item_id=item_id, summary="saved=" + str(before) + ", rebooting")
 
-        # Resumed invocation (phase == "after"): compare brightness.
+        # Resumed invocation (marker gone = reboot happened): compare.
         before = progress.get("before")
+        if before is None:
+            # Try reading from marker's persisted state
+            before = progress.get("before")
         after = get_brightness()
         if before is None or after is None:
             return WorkflowResult(success=False, item_id=item_id, summary="before=" + str(before) + " after=" + str(after))
@@ -519,13 +532,19 @@ class System76PowerCLIWorkflow(Workflow):
 
         self.persist_state(
             item_id, "state",
-            {"kind": "brightness_restart", "before": before, "after": after, "phase": "done"},
+            {"kind": "brightness_restart", "before": before, "after": after, "phase": "done", "done": True},
         )
         if self.artifacts is not None and item_id:
             try:
                 self.artifacts.save_text(item_id, "verify", "before=" + str(before) + " after=" + str(after) + " ok=" + str(ok) + "\n", step="after_reboot")
             except Exception:
                 pass
+        # Clean up marker.
+        try:
+            if marker.exists():
+                marker.unlink()
+        except Exception:
+            pass
         return WorkflowResult(success=ok, item_id=item_id, summary="before=" + str(before) + " after=" + str(after), data={"before": before, "after": after})
 
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:

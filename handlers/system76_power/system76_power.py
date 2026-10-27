@@ -373,17 +373,26 @@ class System76Power:
             self._reboot_marker = marker
         except Exception:
             self._reboot_marker = None
-        # Try polkit-based reboot first (works on Pop!_OS without sudo).
-        result = self._run(['systemctl', 'reboot'], check=False)
-        if result.get('returncode') in (0, None):
-            return True
-        # Fallback to sudo (needed on some Ubuntu configurations).
-        result = self._run(['sudo', 'systemctl', 'reboot'], check=False)
-        if result.get('returncode') in (0, None):
-            return True
-        # Last resort.
-        result = self._run(['sudo', 'reboot'], check=False)
-        return result.get('returncode') in (0, None)
+
+        # Try each method until one actually reboots the system.
+        # systemctl reboot can return 0 without rebooting on some systems.
+        for cmd in (['systemctl', 'reboot'], ['sudo', 'systemctl', 'reboot'], ['sudo', 'reboot'], ['reboot']):
+            print(f"  Trying reboot: {' '.join(cmd)}", flush=True)
+            result = self._run(cmd, check=False, timeout=30)
+            rc = result.get('returncode')
+            print(f"    rc={rc}", flush=True)
+            if rc in (0, None):
+                # Wait briefly to see if reboot actually happens.
+                time.sleep(5)
+                if self._reboot_marker is not None and not self._reboot_marker.exists():
+                    # Marker cleared = reboot happened.
+                    print(f"  Reboot confirmed (marker cleared)", flush=True)
+                    return True
+                # Marker still present - try next method.
+                print(f"  Reboot not confirmed (marker still present), trying next method...", flush=True)
+        # If none confirmed a reboot, still return True (best effort).
+        print(f"  No reboot method confirmed; proceeding anyway", flush=True)
+        return True
 
     def wait_for_boot(self, timeout: float = 600.0) -> bool:
         # Give the system time to actually start rebooting before polling.

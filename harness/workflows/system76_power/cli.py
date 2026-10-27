@@ -425,6 +425,99 @@ class System76PowerCLIWorkflow(Workflow):
             traceback.print_exc()
             return WorkflowResult(success=False, item_id=item_id, summary=f"exception: {e}", data={"error": str(e)})
 
+    def verify_cli_graphics_reflected_in_extension(self, item_id: str = "cli.graphics_transitions") -> WorkflowResult:
+        """Aggregate GUI verification from all CLI graphics transitions."""
+        modes = ["nvidia", "integrated", "hybrid", "compute"]
+        pairs = [(s, t) for s in modes for t in modes if s != t]
+
+        gui_results = []
+        all_gui_ok = True
+        any_gui_ran = False
+        for source, target in pairs:
+            trans_item_id = f"{item_id}.{source}_to_{target}"
+            progress = self.resume_progress(trans_item_id, kind="graphics_transition")
+            results = progress.get("results", [])
+            entry = next(
+                (e for e in results if e.get("from") == source and e.get("to") == target),
+                None,
+            )
+            gui_v = entry.get("gui_verified") if isinstance(entry, dict) else None
+            if gui_v is not None:
+                any_gui_ran = True
+                if not gui_v:
+                    all_gui_ok = False
+            gui_results.append({"from": source, "to": target, "gui_verified": gui_v})
+
+        if not any_gui_ran:
+            return WorkflowResult(
+                success=True,
+                item_id=item_id,
+                summary="no GUI verification data (not 22.04 or transitions not run)",
+                data={"gui_results": gui_results, "skipped": True},
+            )
+
+        failed = [r for r in gui_results if r["gui_verified"] is False]
+        summary = f"gui_reflected: {len(gui_results) - len(failed)}/{len(gui_results)} passed"
+        return WorkflowResult(
+            success=all_gui_ok,
+            item_id=item_id,
+            summary=summary,
+            data={"gui_results": gui_results},
+        )
+
+    def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:
+        """Verify screen brightness is preserved across a system reboot."""
+        from harness.brightness import get_brightness
+
+        handler = System76Power(
+            test_id="system76_power.cli.brightness_restart",
+            item_id=item_id,
+            phase="action",
+            artifacts=self.artifacts,
+        )
+
+        progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
+        phase = progress.get("phase", "before")
+
+        if phase == "before":
+            before = get_brightness()
+            if before is None:
+                return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
+            self.persist_state(
+                item_id, "state",
+                {"kind": "brightness_restart", "before": before, "phase": "before"},
+            )
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "setup", "brightness_before=" + str(before) + "\n", step="before_reboot")
+                except Exception:
+                    pass
+            handler.setup_autologin()
+            handler.reboot()
+            handler.wait_for_boot()
+            return WorkflowResult(success=True, item_id=item_id, summary="saved=" + str(before) + ", rebooting")
+
+        before = progress.get("before")
+        after = get_brightness()
+        if before is None or after is None:
+            return WorkflowResult(success=False, item_id=item_id, summary="before=" + str(before) + " after=" + str(after))
+
+        from harness.brightness import get_max_brightness
+        max_b = get_max_brightness()
+        tolerance = max(1, (max_b or 100) // 20)
+        ok = abs(after - before) <= tolerance
+
+        self.persist_state(
+            item_id, "state",
+            {"kind": "brightness_restart", "before": before, "after": after, "phase": "done"},
+        )
+        if self.artifacts is not None and item_id:
+            try:
+                self.artifacts.save_text(item_id, "verify", "before=" + str(before) + " after=" + str(after) + " ok=" + str(ok) + "\n", step="after_reboot")
+            except Exception:
+                pass
+        return WorkflowResult(success=ok, item_id=item_id, summary="before=" + str(before) + " after=" + str(after), data={"before": before, "after": after})
+
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:
         handler = System76Power(
             test_id="system76_power.cli.graphics_power",

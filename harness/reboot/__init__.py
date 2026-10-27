@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
 import pwd
 
 from .autostart import ResumePlan, install_resume_unit, remove_resume_unit
@@ -176,6 +177,30 @@ def finish_reboot(*, username: str | None = None) -> bool:
             restored = force_restore_autologin()
         except Exception:
             pass
+    # Clean up persistent reboot marker.
+    if username:
+        try:
+            from handlers.system76_power import System76Power
+        except Exception:
+            pass
+    try:
+        # Find and remove persistent markers in all run dirs.
+        artifacts_root = Path(os.environ.get("GUI_TESTING_ARTIFACTS", "artifacts"))
+        if not artifacts_root.is_absolute():
+            artifacts_root = Path.cwd() / artifacts_root
+        for marker in artifacts_root.glob("*/reboot-marker"):
+            try:
+                marker.unlink()
+            except OSError:
+                pass
+    except Exception:
+        pass
+    # Also try removing from the run dir if available.
+    try:
+        run_dir = getattr(getattr(finish_reboot, "_last_run_dir", None), None, None)
+    except Exception:
+        pass
+
     # Also try to clean up sudoers (best-effort).
     try:
         subprocess.run(

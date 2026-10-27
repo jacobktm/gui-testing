@@ -108,6 +108,20 @@ def main(argv: list[str] | None = None) -> int:
             restored = force_restore_autologin()
             print(f"force restore: {restored}")
         print(f"autologin restored: {restored}")
+        # Clean up persistent reboot markers.
+        import glob
+        for marker in glob.glob(str(Path.home() / ".local" / "share" / "gui-testing" / ".." / ".." / ".." / ".." / "artifacts" / "*" / "reboot-marker")):
+            try:
+                Path(marker).unlink()
+            except Exception:
+                pass
+        # Also check common locations.
+        for root in (Path("/home") / os.environ.get("USER", "system76"), Path.cwd()):
+            for marker in root.rglob("reboot-marker"):
+                try:
+                    marker.unlink()
+                except Exception:
+                    pass
         return 0 if restored else 1
 
     restored = AutologinManager(session).restore()

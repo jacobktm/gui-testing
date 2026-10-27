@@ -474,8 +474,8 @@ class System76PowerCLIWorkflow(Workflow):
     def check_brightness_after_reboot(self, item_id: str = "cli.brightness_restart") -> WorkflowResult:
         """Verify screen brightness is preserved across a system reboot.
 
-        Simple approach: set brightness to 50%, reboot, verify still 50%.
-        No before/after comparison needed — we know the target is 50%.
+        Sets brightness to 50%, reboots, then checks if brightness is still
+        at the same level after the daemon settles.
         """
         import sys
         import time
@@ -492,6 +492,12 @@ class System76PowerCLIWorkflow(Workflow):
 
         def log(msg):
             print(msg, file=sys.stderr, flush=True)
+            # Also save to artifact for report.
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "verify", msg + "\n", step="debug")
+                except Exception:
+                    pass
 
         # Load persisted state.
         state = self.load_persisted_state(item_id, phase="state")
@@ -502,25 +508,41 @@ class System76PowerCLIWorkflow(Workflow):
             log("[brightness_reboot] already done")
             return WorkflowResult(success=state.get("ok", True), item_id=item_id, summary="done", data={"ok": state.get("ok", True)})
 
-        # Resumed after reboot: verify brightness is still ~50%.
+        # Resumed after reboot: verify brightness preserved.
         if isinstance(state, dict) and state.get("phase") == "rebooting":
             settled = state.get("settled")
             log(f"[brightness_reboot] resumed after reboot, settled={settled}")
-            time.sleep(5)
-            after = get_brightness()
+            # Wait for daemon to settle, reading brightness until it stabilizes.
+            readings = []
+            prev = None
+            stable_count = 0
+            for i in range(30):
+                time.sleep(2)
+                after = get_brightness()
+                readings.append(after)
+                log(f"[brightness_reboot] reading {i}: {after}")
+                if after is not None and after == prev:
+                    stable_count += 1
+                    if stable_count >= 3:
+                        break
+                else:
+                    stable_count = 0
+                prev = after
+            after = readings[-1] if readings else get_brightness()
             max_b = get_max_brightness()
-            log(f"[brightness_reboot] after={after} max={max_b}")
+            log(f"[brightness_reboot] final after={after} max={max_b} readings={readings}")
             if after is None or max_b is None or settled is None:
+                self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "done", "ok": False, "after": after, "max": max_b, "settled": settled, "readings": readings})
                 return WorkflowResult(success=False, item_id=item_id, summary="no backlight after reboot")
-            # Compare to the actual settled value (not 50% target).
+
             tolerance = max(1, max_b // 20)
             ok = abs(after - settled) <= tolerance
-            log(f"[brightness_reboot] settled={settled} after={after} ok={ok}")
+            log(f"[brightness_reboot] settled={settled} after={after} tolerance={tolerance} ok={ok}")
 
-            self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "done", "ok": ok, "after": after, "max": max_b, "settled": settled})
+            self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "done", "ok": ok, "after": after, "max": max_b, "settled": settled, "readings": readings})
             if self.artifacts is not None and item_id:
                 try:
-                    self.artifacts.save_text(item_id, "verify", f"settled={settled} after={after} ok={ok}\n", step="after_reboot")
+                    self.artifacts.save_text(item_id, "verify", f"settled={settled} after={after} tolerance={tolerance} ok={ok}\nreadings={readings}\n", step="after_reboot")
                 except Exception:
                     pass
             try:
@@ -529,7 +551,7 @@ class System76PowerCLIWorkflow(Workflow):
                     marker.unlink()
             except Exception:
                 pass
-            return WorkflowResult(success=ok, item_id=item_id, summary=f"settled={settled} after={after} ok={ok}", data={"ok": ok, "after": after, "settled": settled})
+            return WorkflowResult(success=ok, item_id=item_id, summary=f"settled={settled} after={after} ok={ok}", data={"ok": ok, "after": after, "settled": settled, "readings": readings})
 
         # Safety: don't reboot again if resumed but no state.
         if os.environ.get("GUI_TESTING_RESUMED") == "1":
@@ -551,7 +573,6 @@ class System76PowerCLIWorkflow(Workflow):
         except Exception:
             boot_id_before = None
 
-        # Persist the ACTUAL settled value, not the target.
         self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current})
         if self.artifacts is not None and item_id:
             try:

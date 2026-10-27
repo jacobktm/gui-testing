@@ -258,6 +258,11 @@ class System76PowerCLIWorkflow(Workflow):
             current = handler.get_graphics_mode()
             print(f"  transition {source}->{target}: current (source) mode = {current!r}", flush=True)
 
+            # Track whether we started from the expected source mode.
+            source_mismatch = (current != source and current is not None)
+            if source_mismatch:
+                print(f"  WARNING: expected source {source!r} but system is in {current!r}", flush=True)
+
             # If already in target mode, verify and return without rebooting.
             if current == target:
                 print(f"  Already in {target} mode, no transition needed.", flush=True)

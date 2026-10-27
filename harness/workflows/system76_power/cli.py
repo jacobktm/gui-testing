@@ -483,6 +483,8 @@ class System76PowerCLIWorkflow(Workflow):
 
         progress = self.resume_progress(item_id, kind="brightness_restart") if item_id else {}
         phase = progress.get("phase", "before")
+        print(f"  [brightness_reboot] item_id={item_id} phase={phase} progress={progress}", flush=True)
+        print(f"  [brightness_reboot] artifacts={self.artifacts is not None} run_dir={getattr(self.artifacts, 'run_dir', None)}", flush=True)
 
         if phase == "before":
             # First invocation: save brightness and reboot.

@@ -422,7 +422,10 @@ class System76Power:
             try:
                 state = self._run(['systemctl', 'is-system-running'], check=False)
                 status = (state.get('stdout') or '').strip() if state else ''
-                if state.get('returncode') == 0 and status:
+                rc = state.get('returncode') if state else None
+                # Accept 'running' (rc=0) and 'degraded' (failed units but
+                # booted) so a non-critical failed unit doesn't block tests.
+                if status in ('running', 'degraded') or (rc == 0 and status):
                     if marker is not None and not rebooted:
                         print(f"  Warning: reboot marker still present, system may not have rebooted", flush=True)
                     else:

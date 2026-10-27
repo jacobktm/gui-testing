@@ -488,23 +488,26 @@ class System76PowerGUIWorkflow(Workflow):
     ) -> WorkflowResult:
         """Detect current power profile via UI.
 
-        Ubuntu uses 'Power Saver' label; others use battery/balanced/performance.
+        Ubuntu uses 'Power Saver' label; Pop!_OS uses 'High Performance',
+        'Balanced', 'Battery Saver' or 'Battery'.
         """
         if os_id == "ubuntu-26.04":
-            expected = {"Power Saver", "Balanced", "Performance"}
+            expected = {"power saver", "balanced", "performance"}
             prompt = (
-                "Look at this screenshot of Ubuntu 26.04 power settings. "
+                "Look at this screenshot of Ubuntu power settings. "
                 "What power mode is currently active? "
                 "Give me the response in just a single word: either "
                 "'Power Saver', 'Balanced', or 'Performance'."
             )
         else:
-            expected = {"battery", "balanced", "performance"}
+            expected = {"high performance", "performance", "balanced", "battery", "battery saver"}
             prompt = (
                 "Look at this screenshot of the power settings. "
                 "What power profile is currently active? "
-                "Give me the response in just a single word, either "
-                "'battery', 'balanced', or 'performance'."
+                "The options are 'High Performance', 'Balanced', 'Battery', "
+                "or 'Battery Saver'. "
+                "Give me the response in just a single word or two, either "
+                "'High Performance', 'Balanced', 'Battery', or 'Battery Saver'."
             )
 
         # Open power settings first so the panel is visible.
@@ -514,8 +517,6 @@ class System76PowerGUIWorkflow(Workflow):
             pass
         import time
         time.sleep(5)
-        # Do NOT send ESC or click center — that closes the settings panel.
-        # Just wait for it to fully render, then capture.
         try:
             value, result = self.driver.capture_and_detect(
                 prompt,
@@ -529,22 +530,28 @@ class System76PowerGUIWorkflow(Workflow):
                 success=False, item_id=item_id, summary=f"detect failed: {exc}"
             )
 
-        # Wait for screenshot notification to disappear (15s) before any clicks.
-        import time as _t
-        _t.sleep(15)
+        # Wait for screenshot notification to disappear (15s).
+        time.sleep(15)
 
         if self.artifacts is not None and item_id:
             try:
-                ok = value in expected or value.lower() in {e.lower() for e in expected}
+                ok = value.lower() in {e.lower() for e in expected}
                 self.artifacts.record_item(item_id, status="passed" if ok else "failed")
             except Exception:
                 pass
 
+        # Normalize: map GUI labels to CLI names.
+        normalized = value.lower().strip()
+        if normalized in ("high performance",):
+            normalized = "performance"
+        elif normalized in ("battery saver",):
+            normalized = "battery"
+
         return WorkflowResult(
-            success=value in expected or value.lower() in {e.lower() for e in expected},
+            success=value.lower() in {e.lower() for e in expected},
             item_id=item_id,
             summary=f"profile={value}",
-            data={"profile": value, "normalized": result.normalized},
+            data={"profile": normalized, "raw": value, "normalized": result.normalized},
         )
 
     def detect_graphics_mode(

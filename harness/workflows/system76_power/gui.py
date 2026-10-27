@@ -466,12 +466,12 @@ class System76PowerGUIWorkflow(Workflow):
         except Exception:
             pass
         import time
-        time.sleep(2)
-        # Dismiss any lingering pop-ups before capturing.
+        time.sleep(3)
+        # Dismiss any lingering pop-ups with ESC only (don't click center,
+        # that would close the settings panel).
         try:
-            self.dismiss_menus()
-            self.driver.go_to((0.5, 0.5))
-            self.driver.click_at((0.5, 0.5))
+            from ...dotool import send_keys
+            send_keys("key esc\n")
         except Exception:
             pass
         time.sleep(1)

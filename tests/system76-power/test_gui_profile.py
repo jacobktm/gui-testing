@@ -16,6 +16,12 @@ class TestSystem76PowerGUI:
         """Trigger screenshot permission dialog early (COSMIC)."""
         import os
         from pathlib import Path
+        # Pre-grant permission via D-Bus before attempting capture.
+        try:
+            from harness.screenshots.screenshot import grant_screenshot_permission
+            grant_screenshot_permission()
+        except Exception:
+            pass
         from harness.screenshots.screenshot import capture
 
         out_dir = Path("/tmp/opencode/screenshot_perm")
@@ -29,10 +35,20 @@ class TestSystem76PowerGUI:
             pass  # Permission dialog may block; that's expected on first run
         # Wait for permission dialog, then try to dismiss/allow.
         import time
-        time.sleep(3)
+        time.sleep(5)
+        # Try multiple methods to dismiss the permission dialog.
+        for key in ("enter", "space"):
+            try:
+                from harness.dotool import send_keys
+                send_keys(f"key {key}")
+                time.sleep(1)
+            except Exception:
+                pass
+        # Also try clicking center (in case it's a clickable dialog).
         try:
-            from harness.dotool import send_keys
-            send_keys("key enter")
+            from harness.dotool import mouseto, click
+            mouseto((0.5, 0.5))
+            click()
         except Exception:
             pass
         time.sleep(2)

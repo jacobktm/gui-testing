@@ -22,12 +22,14 @@ class TestBrightness:
         cur = b.current()
         if artifacts:
             try:
-                artifacts.save_text("brightness.balanced_max", "verify", f"brightness={cur}/{max_b}\n", step="check")
+                artifacts.save_text("brightness.balanced_max", "verify", f"brightness={cur}/{max_b} ({(cur/max_b*100):.0f}%)\n", step="check")
             except Exception:
                 pass
-        # Should drop to ~50% when going to balanced from max
-        assert cur is not None
-        assert cur <= int(max_b * 0.6) + 2, f"brightness={cur}/{max_b} (expected <= {int(max_b * 0.6) + 2})"
+        # Should drop to ~50% when going to balanced from max.
+        # Percentage matters more than raw value (max varies by system).
+        pct = (cur / max_b * 100) if max_b else 0
+        assert cur is not None, f"brightness={cur}/{max_b}"
+        assert pct <= 60, f"brightness={cur}/{max_b} ({pct:.0f}%, expected <= 60%)" 
 
     def test_brightness_battery_max(self, artifacts):
         b = BrightnessHandler()
@@ -44,11 +46,12 @@ class TestBrightness:
         cur = b.current()
         if artifacts:
             try:
-                artifacts.save_text("brightness.battery_max", "verify", f"brightness={cur}/{max_b}\n", step="check")
+                artifacts.save_text("brightness.battery_max", "verify", f"brightness={cur}/{max_b} ({(cur/max_b*100):.0f}%)\n", step="check")
             except Exception:
                 pass
-        assert cur is not None
-        assert cur <= int(max_b * 0.2) + 2, f"brightness={cur}/{max_b} (expected <= {int(max_b * 0.2) + 2})"
+        pct = (cur / max_b * 100) if max_b else 0
+        assert cur is not None, f"brightness={cur}/{max_b}"
+        assert pct <= 20, f"brightness={cur}/{max_b} ({pct:.0f}%, expected <= 20%)" 
 
     def test_brightness_balanced_min(self, artifacts):
         b = BrightnessHandler()

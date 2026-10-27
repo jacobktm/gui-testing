@@ -255,6 +255,12 @@ class System76PowerCLIWorkflow(Workflow):
             in_progress = (progress.get("source"), progress.get("target")) == (source, target)
             phase = progress.get("phase", "start") if in_progress else "start"
 
+            # Safety: if resumed but no state found, don't reboot again.
+            import os as _os
+            if _os.environ.get("GUI_TESTING_RESUMED") == "1" and phase == "start" and not in_progress:
+                print(f"  [graphics] RESUMED but no state found for {source}->{target} - refusing to reboot", flush=True)
+                return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (no persisted state on resume)", data={"error": "no state on resume"})
+
             current = handler.get_graphics_mode()
             print(f"  transition {source}->{target}: current (source) mode = {current!r}", flush=True)
 

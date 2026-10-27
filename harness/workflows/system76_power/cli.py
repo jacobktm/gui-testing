@@ -506,6 +506,12 @@ class System76PowerCLIWorkflow(Workflow):
         if isinstance(state, dict) and state.get("phase") == "rebooting":
             settled = state.get("settled")
             log(f"[brightness_reboot] resumed after reboot, settled={settled}")
+            # Check current profile.
+            try:
+                prof = handler.get_perf_profile()
+                log(f"[brightness_reboot] current profile after reboot: {prof}")
+            except Exception as e:
+                log(f"[brightness_reboot] profile check failed: {e}")
             # Wait for daemon to settle, reading brightness until it stabilizes.
             readings = []
             prev = None

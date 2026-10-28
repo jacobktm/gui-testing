@@ -55,7 +55,76 @@ COORD_SOURCE = {
 
 def get_display_resolution() -> tuple[int, int]:
     """Return (width, height) of the primary display."""
-    # Try wlr-randr first (Wayland native, most reliable on COSMIC).
+    # Try cosmic-randr first (COSMIC native).
+    try:
+        import subprocess, re
+        result = subprocess.run(
+            ["cosmic-randr", "list"], capture_output=True, text=True, timeout=5
+        )
+        # Strip ANSI color codes.
+        ansi_re = re.compile(r'\x1b\[[0-9;]*m')
+        clean = ansi_re.sub('', result.stdout)
+        # Parse output: find display at position 0,0, get its current mode.
+        lines = clean.splitlines()
+        current_display_pos = None
+        current_mode = None
+        in_modes = False
+        primary_mode = None
+        primary_found = False
+        for line in lines:
+            # Display header: "eDP-1 (enabled)" or "DP-3 (enabled)"
+            if not line.startswith(" ") and not line.startswith("\t") and line.strip() and "(" in line:
+                # New display. Check if previous was primary.
+                if current_display_pos == (0, 0) and current_mode:
+                    primary_mode = current_mode
+                    primary_found = True
+                current_display_pos = None
+                current_mode = None
+                in_modes = False
+                continue
+            stripped = line.strip()
+            if stripped.startswith("Position:"):
+                parts = stripped.split(":", 1)[1].strip().split(",")
+                if len(parts) == 2:
+                    try:
+                        current_display_pos = (int(parts[0]), int(parts[1]))
+                    except ValueError:
+                        pass
+            elif stripped.startswith("Modes:"):
+                in_modes = True
+            elif in_modes and "current" in stripped:
+                # "3840x2160 @ 144.001 Hz (current) (preferred)"
+                res = stripped.split()[0]
+                res = re.sub(r'\x1b\[[0-9;]*m', '', res)
+                if "x" in res:
+                    try:
+                        w, h = res.split("x")
+                        current_mode = (int(w), int(h))
+                    except ValueError:
+                        pass
+        # Check last display.
+        if not primary_found and current_display_pos == (0, 0) and current_mode:
+            primary_mode = current_mode
+            primary_found = True
+        # If no primary found, use first display with a mode.
+        if primary_mode is None:
+            # Re-parse to find any display with a current mode.
+            for line in lines:
+                stripped = line.strip()
+                if stripped and "current" in stripped and "x" in stripped.split()[0] if stripped.split() else False:
+                    res = stripped.split()[0]
+                    if "x" in res:
+                        try:
+                            w, h = res.split("x")
+                            primary_mode = (int(w), int(h))
+                            break
+                        except ValueError:
+                            pass
+        if primary_mode is not None:
+            return primary_mode
+    except Exception:
+        pass
+    # Try wlr-randr
     try:
         import subprocess
         result = subprocess.run(

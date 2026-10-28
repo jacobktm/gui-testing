@@ -185,16 +185,16 @@ class System76PowerCLIWorkflow(Workflow):
         chained_order = [
             ("hybrid", "integrated"),
             ("integrated", "nvidia"),
-            ("nvidia", "hybrid"),
+            ("nvidia", "integrated"),
+            ("integrated", "hybrid"),
             ("hybrid", "compute"),
             ("compute", "integrated"),
-            ("integrated", "hybrid"),
+            ("integrated", "compute"),
+            ("compute", "hybrid"),
             ("hybrid", "nvidia"),
             ("nvidia", "compute"),
-            ("compute", "hybrid"),
-            ("integrated", "compute"),
             ("compute", "nvidia"),
-            ("nvidia", "integrated"),
+            ("nvidia", "hybrid"),
         ]
         # Filter to only include modes that exist on this system.
         path = [(s, t) for s, t in chained_order if s in modes and t in modes]

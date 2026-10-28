@@ -137,7 +137,11 @@ def finish_reboot(*, username: str | None = None) -> bool:
     the detected user is wrong (common on Pop!_OS GNOME/COSMIC).
     """
     print("[finish_reboot] START", file=sys.stderr, flush=True)
-    target = username or detect_gui_user()
+    try:
+        target = username or detect_gui_user()
+    except Exception as e:
+        print(f"[finish_reboot] detect_gui_user failed: {e}", file=sys.stderr, flush=True)
+        target = "system76"
     print(f"[finish_reboot] target user: {target}", file=sys.stderr, flush=True)
     # Try the detected user and the current user.
     users_to_try = [target]

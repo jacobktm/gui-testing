@@ -16,19 +16,19 @@ class TestSystem76PowerGUI:
         """Trigger screenshot permission dialog early (COSMIC)."""
         import os
         from pathlib import Path
-        from harness.screenshots.screenshot import capture
+        from harness.screenshots.screenshot import capture, grant_screenshot_permission
+
+        # Pre-grant permission via D-Bus before attempting capture.
+        try:
+            grant_screenshot_permission()
+        except Exception:
+            pass
 
         out_dir = Path("/tmp/opencode/screenshot_perm")
         out_dir.mkdir(parents=True, exist_ok=True)
         shot_path = out_dir / "permission_test.png"
         if shot_path.exists():
             shot_path.unlink()
-        # Pre-grant permission via D-Bus.
-        try:
-            from harness.screenshots.screenshot import grant_screenshot_permission
-            grant_screenshot_permission()
-        except Exception:
-            pass
 
         # Wait until screenshots actually work (retry up to 60s).
         import time as _t
@@ -47,10 +47,9 @@ class TestSystem76PowerGUI:
         assert screenshot_ok, "screenshots not working after 60s (permission not granted?)"
 
         # Wait for screenshot notification to disappear (15s).
-        _t.sleep(5)
+        _t.sleep(15)
         # Re-grant permission in case it was revoked.
         try:
-            from harness.screenshots.screenshot import grant_screenshot_permission
             grant_screenshot_permission()
         except Exception:
             pass
@@ -144,31 +143,6 @@ class TestSystem76PowerGUI:
                 return  # skip visual validation only
             pytest.skip("graphics mode detection not available")
 
-    def test_cli_profile_change_reflected_in_extension(self, artifacts):
-        """Switch profile via CLI, verify the panel applet reflects it."""
-        from handlers.system76_power import System76Power
-
-        os_id = _os_id()
-        handler = System76Power(artifacts=artifacts)
-        target = "performance" if handler.get_perf_profile() != "performance" else "balanced"
-        handler.switch_perf_profile(target)
-
-        import time
-        time.sleep(3)
-        # Dismiss any pop-ups by clicking center.
-        try:
-            from harness.dotool import mouseto, click
-            mouseto((0.5, 0.5))
-            click()
-        except Exception:
-            pass
-        time.sleep(1)
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.detect_power_profile(os_id)
-        assert res.success, res.summary
-        detected = (res.data or {}).get("profile", "").lower()
-        assert detected == target, f"extension shows {detected}, expected {target}"
-
     @pytest.mark.reboot
     def test_gui_transition_to_hybrid(self, artifacts):
         """Pop!_OS 22.04 only."""
@@ -177,6 +151,15 @@ class TestSystem76PowerGUI:
             pytest.skip("GUI graphics only on Pop!_OS 22.04")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         res = wf.transition_to_hybrid(os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_hybrid_to_integrated(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("hybrid", "integrated", os_id="pop-22.04")
         assert res.success, res.summary
 
     @pytest.mark.reboot
@@ -189,12 +172,21 @@ class TestSystem76PowerGUI:
         assert res.success, res.summary
 
     @pytest.mark.reboot
-    def test_gui_transition_nvidia_to_hybrid(self, artifacts):
+    def test_gui_transition_nvidia_to_integrated(self, artifacts):
         os_id = _os_id()
         if not os_id.startswith("pop-22"):
             pytest.skip("GUI graphics only on Pop!_OS 22.04")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("nvidia", "hybrid", os_id="pop-22.04")
+        res = wf.transition_graphics("nvidia", "integrated", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_integrated_to_hybrid(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("integrated", "hybrid", os_id="pop-22.04")
         assert res.success, res.summary
 
     @pytest.mark.reboot
@@ -216,12 +208,21 @@ class TestSystem76PowerGUI:
         assert res.success, res.summary
 
     @pytest.mark.reboot
-    def test_gui_transition_integrated_to_hybrid(self, artifacts):
+    def test_gui_transition_integrated_to_compute(self, artifacts):
         os_id = _os_id()
         if not os_id.startswith("pop-22"):
             pytest.skip("GUI graphics only on Pop!_OS 22.04")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("integrated", "hybrid", os_id="pop-22.04")
+        res = wf.transition_graphics("integrated", "compute", os_id="pop-22.04")
+        assert res.success, res.summary
+
+    @pytest.mark.reboot
+    def test_gui_transition_compute_to_hybrid(self, artifacts):
+        os_id = _os_id()
+        if not os_id.startswith("pop-22"):
+            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.transition_graphics("compute", "hybrid", os_id="pop-22.04")
         assert res.success, res.summary
 
     @pytest.mark.reboot
@@ -243,33 +244,6 @@ class TestSystem76PowerGUI:
         assert res.success, res.summary
 
     @pytest.mark.reboot
-    def test_gui_transition_compute_to_hybrid(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("compute", "hybrid", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_hybrid_to_integrated(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("hybrid", "integrated", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_integrated_to_compute(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("integrated", "compute", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
     def test_gui_transition_compute_to_nvidia(self, artifacts):
         os_id = _os_id()
         if not os_id.startswith("pop-22"):
@@ -279,16 +253,35 @@ class TestSystem76PowerGUI:
         assert res.success, res.summary
 
     @pytest.mark.reboot
-    def test_gui_transition_nvidia_to_integrated(self, artifacts):
+    def test_gui_transition_nvidia_to_hybrid(self, artifacts):
         os_id = _os_id()
         if not os_id.startswith("pop-22"):
             pytest.skip("GUI graphics only on Pop!_OS 22.04")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("nvidia", "integrated", os_id="pop-22.04")
+        res = wf.transition_graphics("nvidia", "hybrid", os_id="pop-22.04")
         assert res.success, res.summary
 
+    def test_cli_profile_change_reflected_in_extension(self, artifacts):
+        """Switch profile via CLI, verify the panel applet reflects it."""
+        from handlers.system76_power import System76Power
 
+        os_id = _os_id()
+        handler = System76Power(artifacts=artifacts)
+        target = "performance" if handler.get_perf_profile() != "performance" else "balanced"
+        handler.switch_perf_profile(target)
 
-
-
-
+        import time
+        time.sleep(3)
+        # Dismiss any pop-ups and click center before detection.
+        try:
+            from harness.dotool import mouseto, click
+            mouseto((0.5, 0.5))
+            click()
+        except Exception:
+            pass
+        time.sleep(1)
+        wf = System76PowerGUIWorkflow(artifacts=artifacts)
+        res = wf.detect_power_profile(os_id)
+        assert res.success, res.summary
+        detected = (res.data or {}).get("profile", "").lower()
+        assert detected == target, f"extension shows {detected}, expected {target}"

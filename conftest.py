@@ -309,6 +309,10 @@ def pytest_sessionfinish(session, exitstatus):
         print(f"CLEANUP: finish_reboot EXCEPTION: {e}", flush=True)
         import traceback
         traceback.print_exc()
+    except BaseException as e:
+        print(f"CLEANUP: finish_reboot BASE EXCEPTION: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
     config._gui_reboot_finished = True
 
     # Final reboot after cleanup (signals test completion to the user).

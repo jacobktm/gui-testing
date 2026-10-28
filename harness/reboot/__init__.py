@@ -136,7 +136,9 @@ def finish_reboot(*, username: str | None = None) -> bool:
     Tries multiple users and locations to ensure cleanup happens even if
     the detected user is wrong (common on Pop!_OS GNOME/COSMIC).
     """
+    print("[finish_reboot] START", file=sys.stderr, flush=True)
     target = username or detect_gui_user()
+    print(f"[finish_reboot] target user: {target}", file=sys.stderr, flush=True)
     # Try the detected user and the current user.
     users_to_try = [target]
     try:

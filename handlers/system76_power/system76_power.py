@@ -397,10 +397,9 @@ class System76Power:
         # systemctl reboot can return 0 without rebooting on some systems
         # (e.g. blocked by inhibitor locks or confirmation dialogs).
         reboot_cmds = [
-            ['loginctl', 'reboot'],                                      # logind (no sudo, reliable)
             ['systemctl', 'reboot'],                                     # polkit (no sudo)
             ['reboot'],                                                  # polkit (no sudo)
-            ['pkexec', 'systemctl', 'reboot'],                           # polkit graphical
+            # pkexec removed - can block on graphical auth dialog
             ['reboot', '-f'],                                           # force, bypass inhibitors
             ['sudo', '-n', 'systemctl', 'reboot'],                      # sudo (if sudoers present)
             ['sudo', '-n', 'reboot', '-f'],                            # sudo force

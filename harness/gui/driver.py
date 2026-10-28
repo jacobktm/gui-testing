@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ..detection import parse_detection, to_dotool_normalized
+from .set_of_mark import generate_set_of_mark
 from .set_of_mark import detect_element_coords
 from ..dotool import click, mouseto
 from ..ollama_client import Ollama
@@ -86,6 +87,97 @@ class GuiDriver:
         import sys
         print(f"[detect_coords_som] {target_description} -> {coords}", file=sys.stderr, flush=True)
         return coords
+
+    def detect_power_profile_som(
+        self,
+        os_id: str = "pop-24.04",
+        *,
+        item_id: str | None = None,
+        phase: str = "detect",
+        step: str = "som_profile",
+        out_dir: str | None = None,
+    ) -> str | None:
+        """Use Set-of-Mark to detect the active power profile.
+
+        Detects UI elements via OpenCV, annotates with IDs, asks Ollama
+        which ID is currently selected/highlighted and what its label is.
+        Returns the normalized profile name or None.
+        """
+        out_dir = out_dir or "/tmp/opencode/gui"
+        os.makedirs(out_dir, exist_ok=True)
+
+        import time as _t
+        shot_path = os.path.join(out_dir, f"screenshot_{phase}.png")
+        from ..screenshots.screenshot import capture
+        screenshot = capture(shot_path)
+
+        active_path = os.path.join(out_dir, f"active_{phase}.png")
+        from ..screenshots.screenshot import crop_active_display
+        crop = crop_active_display(screenshot, active_path)
+
+        _t.sleep(5)  # Wait for notification
+
+        som_path, element_map = generate_set_of_mark(str(crop.path))
+        if not element_map:
+            return None
+
+        # Ask Ollama which ID is selected and what its label is.
+        prompt = (
+            "This screenshot has green numbered boxes around UI elements. "
+            "One power profile option is currently selected or highlighted "
+            "(it may have a checkmark, different color, or bold text). "
+            "Which number is next to the selected profile? "
+            "Also tell me the label of that element. "
+            "Format: number,label (e.g., 5,Balanced). "
+            "Return ONLY that, nothing else."
+        )
+
+        response = None
+        try:
+            if self.ollama.client and self.ollama.model:
+                response = self.ollama.send_message(prompt, [som_path])
+        except Exception:
+            response = None
+
+        if response is None:
+            return None
+
+        import re
+        # Parse "number,label" from response.
+        match = re.search(r"(\d+)\s*[,\s]\s*(.+)", response.strip())
+        if match:
+            elem_id = int(match.group(1))
+            label = match.group(2).strip().lower()
+            # Normalize label.
+            if "high performance" in label or label == "performance":
+                label = "performance"
+            elif "battery" in label:
+                label = "battery"
+            elif "balanced" in label:
+                label = "balanced"
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.save_text(
+                        item_id, phase,
+                        f"som_id={elem_id} label={label} raw={response}\ncoords={element_map.get(elem_id)}\n",
+                        step=step,
+                    )
+                except Exception:
+                    pass
+            import sys
+            print(f"[detect_power_profile_som] id={elem_id} label={label}", file=sys.stderr, flush=True)
+            return label
+
+        # Fallback: just extract a number.
+        match = re.search(r"\d+", response)
+        if match:
+            elem_id = int(match.group(0))
+            if elem_id in element_map:
+                # Can't determine label from ID alone.
+                import sys
+                print(f"[detect_power_profile_som] id={elem_id} (no label)", file=sys.stderr, flush=True)
+                return None
+        return None
 
     def capture_and_detect(
         self,

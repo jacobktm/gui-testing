@@ -606,6 +606,43 @@ class System76PowerGUIWorkflow(Workflow):
             data={"profile": normalized, "raw": value, "normalized": result.normalized},
         )
 
+    def detect_power_profile_som(
+        self,
+        os_id: str,
+        item_id: str = "gui.power_profile_detect_som",
+    ) -> WorkflowResult:
+        """Detect power profile using Set-of-Mark (OpenCV + Ollama ID matching)."""
+        import time
+        try:
+            self.open_power_settings(os_id)
+        except Exception:
+            pass
+        time.sleep(5)
+
+        label = self.driver.detect_power_profile_som(os_id, item_id=item_id, phase="detect", step="som_profile")
+        if label is None:
+            return WorkflowResult(success=False, item_id=item_id, summary="SoM detection failed")
+
+        # Click center to dismiss notification.
+        try:
+            self.driver.click_at((0.5, 0.5))
+        except Exception:
+            pass
+        time.sleep(5)
+
+        if self.artifacts is not None and item_id:
+            try:
+                self.artifacts.record_item(item_id, status="passed")
+            except Exception:
+                pass
+
+        return WorkflowResult(
+            success=True,
+            item_id=item_id,
+            summary=f"profile={label}",
+            data={"profile": label},
+        )
+
     def detect_graphics_mode(
         self,
         os_id: str = "pop-22.04",

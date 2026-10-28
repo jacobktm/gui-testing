@@ -55,12 +55,31 @@ COORD_SOURCE = {
 
 def get_display_resolution() -> tuple[int, int]:
     """Return (width, height) of the primary display."""
+    # Try GTK/GDK first.
     try:
         from .display import get_monitors
         monitors = get_monitors()
         if monitors:
             m = monitors[0]
-            return (m["width"], m["height"])
+            if m.get("width", 0) > 0 and m.get("height", 0) > 0:
+                return (m["width"], m["height"])
+    except Exception:
+        pass
+    # Fallback: xrandr.
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["xrandr"], capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            if "*" in line:
+                # "   1920x1080    143.88*+"
+                parts = line.strip().split()
+                if parts:
+                    res = parts[0]
+                    if "x" in res:
+                        w, h = res.split("x")
+                        return (int(w), int(h))
     except Exception:
         pass
     # Fallback: assume 1920x1080.

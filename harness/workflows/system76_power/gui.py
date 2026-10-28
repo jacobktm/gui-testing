@@ -19,18 +19,22 @@ class System76PowerGUIWorkflow(Workflow):
         import sys
         import time
         _src = COORD_SOURCE.get(os_id, (1920, 1080))
+        from ...gui.coords import get_display_resolution
+        _dst = get_display_resolution()
         try:
+            import sys
+            print(f"[open_power_settings] os_id={os_id} src={_src} dst={_dst} OPEN={adjust_coords(Coords.OPEN, _src, _dst)}", file=sys.stderr, flush=True)
             # Click the system tray / battery icon.
-            self.driver.click_at(adjust_coords(Coords.OPEN, _src))
+            self.driver.click_at(adjust_coords(Coords.OPEN, _src, _dst))
             if os_id == "pop-22.04":
                 time.sleep(2)
                 extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
-                self.driver.click_at(adjust_coords(extra, _src))
+                self.driver.click_at(adjust_coords(extra, _src, _dst))
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
                 time.sleep(2)
                 extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
                 if extra:
-                    self.driver.click_at(adjust_coords(extra, _src))
+                    self.driver.click_at(adjust_coords(extra, _src, _dst))
             # Pop 24 (COSMIC): single click on battery icon opens settings.
             time.sleep(3)
         except Exception as exc:
@@ -129,8 +133,10 @@ class System76PowerGUIWorkflow(Workflow):
                 raw_coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
             # Adjust for display aspect ratio.
             src = COORD_SOURCE.get(os_id, (1920, 1080))
-            coords = adjust_coords(raw_coords, src) if raw_coords else None
-            print(f"[set_power_profile_gui] raw={raw_coords} adjusted={coords} src={src}", file=sys.stderr, flush=True)
+            from ...gui.coords import get_display_resolution
+            dst = get_display_resolution()
+            coords = adjust_coords(raw_coords, src, dst) if raw_coords else None
+            print(f"[set_power_profile_gui] profile={profile} raw={raw_coords} src={src} dst={dst} adjusted={coords}", file=sys.stderr, flush=True)
             if coords:
                 import sys
                 print(f"[set_power_profile_gui] clicking profile {profile} at {coords}", file=sys.stderr, flush=True)
@@ -168,7 +174,10 @@ class System76PowerGUIWorkflow(Workflow):
                 raw_coords = Coords.POP22_GRAPHICS.get(mode)
                 if raw_coords:
                     src = COORD_SOURCE.get(os_id, (1920, 1080))
-                    coords = adjust_coords(raw_coords, src)
+                    from ...gui.coords import get_display_resolution
+                    dst = get_display_resolution()
+                    coords = adjust_coords(raw_coords, src, dst)
+                    print(f"[set_graphics_mode_gui] mode={mode} raw={raw_coords} src={src} dst={dst} adjusted={coords}", file=sys.stderr, flush=True)
                     self.driver.click_at(coords)
             if self.artifacts and item_id:
                 try:

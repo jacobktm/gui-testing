@@ -38,3 +38,6 @@ credentials*
 
 # Test artifacts
 artifacts/
+
+# Settings
+.opencode/

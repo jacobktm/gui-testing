@@ -610,7 +610,41 @@ def force_restore_autologin() -> bool:
             print(f"[force_restore] {config_path}: exists, has_initial_session={'[initial_session]' in (text or '')}", file=sys.stderr, flush=True)
             if text is not None and "[initial_session]" in text:
                 cleaned = strip_toml_section(text, "initial_session").rstrip() + "\n"
-                if not _write_privileged(config_path, cleaned):
+                written = _write_privileged(config_path, cleaned)
+                if not written:
+                    # Fallback: use sudo sed to remove the section.
+                    try:
+                        import subprocess
+                        # Use python to do the removal via sudo.
+                        script = (
+                            "import re, pathlib, sys\n"
+                            "p = pathlib.Path(%r)\n"
+                            "t = p.read_text()\n"
+                            "lines = t.splitlines()\n"
+                            "out = []\n"
+                            "skip = False\n"
+                            "for line in lines:\n"
+                            "    if line.strip() == '[initial_session]':\n"
+                            "        skip = True\n"
+                            "        continue\n"
+                            "    if skip and line.strip().startswith('['):\n"
+                            "        skip = False\n"
+                            "    if not skip:\n"
+                            "        out.append(line)\n"
+                            "p.write_text('\\n'.join(out) + '\\n')\n"
+                        ) % str(config_path)
+                        r = subprocess.run(
+                            ["sudo", "-n", "python3", "-c", script],
+                            capture_output=True, text=True, timeout=10,
+                        )
+                        if r.returncode == 0:
+                            written = True
+                            print(f"[force_restore] sudo python3 cleaned {config_path}", file=sys.stderr, flush=True)
+                        else:
+                            print(f"[force_restore] sudo python3 failed: {r.stderr.strip()}", file=sys.stderr, flush=True)
+                    except Exception as e:
+                        print(f"[force_restore] sudo fallback exception: {e}", file=sys.stderr, flush=True)
+                if not written:
                     ok = False
                     print(f"[force_restore] FAILED to write {config_path}", file=sys.stderr, flush=True)
                 else:

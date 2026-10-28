@@ -302,22 +302,29 @@ def pytest_sessionfinish(session, exitstatus):
     # A reboot kills this process, so this only runs once the run really
     # finishes (or is interrupted); restore the machine either way.
     print("CLEANUP: calling finish_reboot", flush=True)
-    finish_reboot(username=username)
+    try:
+        finish_reboot(username=username)
+        print("CLEANUP: finish_reboot done", flush=True)
+    except Exception as e:
+        print(f"CLEANUP: finish_reboot EXCEPTION: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
     config._gui_reboot_finished = True
-    print("CLEANUP: finish_reboot done", flush=True)
 
     # Final reboot after cleanup (signals test completion to the user).
-    # Must happen BEFORE sudoers cleanup (needs passwordless sudo).
+    # Try multiple methods since sudoers may already be gone.
     if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
         print("CLEANUP: triggering final reboot", flush=True)
-        try:
-            r = subprocess.run(
-                ["sudo", "-n", "systemctl", "reboot"],
-                capture_output=True, text=True, timeout=10,
-            )
-            print(f"CLEANUP: reboot rc={r.returncode} stderr={r.stderr.strip()}", flush=True)
-        except Exception as e:
-            print(f"CLEANUP: reboot exception: {e}", flush=True)
+        rebooted = False
+        for cmd in (["systemctl", "reboot"], ["sudo", "-n", "systemctl", "reboot"], ["sudo", "-n", "reboot", "-f"], ["reboot"]):
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                print(f"CLEANUP: reboot {cmd} rc={r.returncode} stderr={r.stderr.strip()}", flush=True)
+                if r.returncode == 0:
+                    rebooted = True
+                    break
+            except Exception as e:
+                print(f"CLEANUP: reboot {cmd} exception: {e}", flush=True)
         # Give the reboot a moment to start.
         import time
         time.sleep(5)

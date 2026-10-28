@@ -55,7 +55,27 @@ COORD_SOURCE = {
 
 def get_display_resolution() -> tuple[int, int]:
     """Return (width, height) of the primary display."""
-    # Try xrandr first (most reliable, works on X11 and XWayland).
+    # Try wlr-randr first (Wayland native, most reliable on COSMIC).
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["wlr-randr"], capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            # "DP-1 "..." (connected)"
+            # "  1920x1080 @ 60.000 Hz (preferred)"
+            line = line.strip()
+            if "x" in line and "@" in line:
+                parts = line.split()
+                res = parts[0]
+                if "x" in res:
+                    w, h = res.split("x")
+                    w, h = int(w), int(h)
+                    if w > 0 and h > 0:
+                        return (w, h)
+    except Exception:
+        pass
+    # Try xrandr.
     try:
         import subprocess
         result = subprocess.run(
@@ -87,6 +107,22 @@ def get_display_resolution() -> tuple[int, int]:
                 primary = monitors[0]
             if primary.get("width", 0) > 0 and primary.get("height", 0) > 0:
                 return (primary["width"], primary["height"])
+    except Exception:
+        pass
+    # Try reading from /sys/class/drm (kernel framebuffer).
+    try:
+        import os, glob
+        for path in sorted(glob.glob("/sys/class/drm/card*/modes")):
+            try:
+                with open(path) as f:
+                    mode = f.readline().strip()
+                    if "x" in mode:
+                        w, h = mode.split("x")[:2]
+                        w, h = int(w), int(h)
+                        if w > 0 and h > 0:
+                            return (w, h)
+            except Exception:
+                pass
     except Exception:
         pass
     # Fallback: assume 1920x1080.

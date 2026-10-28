@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import os
 import pwd
+import sys
 
 from .autostart import ResumePlan, install_resume_unit, remove_resume_unit
 from .resume import (

@@ -326,8 +326,10 @@ class System76PowerCLIWorkflow(Workflow):
                     "logged_output": logged_output,
                 })
                 # Give the GPU time to settle after mode switch.
+                # Longer delay when switching to integrated (powers off dGPU).
                 import time
-                time.sleep(10)
+                settle = 30 if target == "integrated" else 10
+                time.sleep(settle)
                 handler.setup_autologin()
                 handler.reboot()
                 handler.wait_for_boot()

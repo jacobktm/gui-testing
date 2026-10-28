@@ -648,7 +648,7 @@ class System76PowerCLIWorkflow(Workflow):
         )
         handler.switch_perf_profile(target)
         import time
-        time.sleep(12)
+        time.sleep(20)
         # Dismiss pop-ups by clicking center.
         try:
             from ...gui import GuiDriver

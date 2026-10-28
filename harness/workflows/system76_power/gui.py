@@ -528,7 +528,7 @@ class System76PowerGUIWorkflow(Workflow):
                 "If you see 'High Performance', answer 'performance'."
             )
 
-        # Dismiss any open panels first by clicking center.
+        # Dismiss any open panels first by clicking center (twice).
         try:
             self.driver.click_at((0.5, 0.5))
         except Exception:
@@ -536,10 +536,16 @@ class System76PowerGUIWorkflow(Workflow):
         import time
         time.sleep(1)
         try:
+            self.driver.click_at((0.5, 0.5))
+        except Exception:
+            pass
+        time.sleep(2)
+        # Open power settings fresh.
+        try:
             self.open_power_settings(os_id)
         except Exception:
             pass
-        time.sleep(8)
+        time.sleep(10)
         # Try detection up to 2 times.
         value = None
         result = None

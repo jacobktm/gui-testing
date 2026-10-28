@@ -659,12 +659,22 @@ class System76PowerCLIWorkflow(Workflow):
 
         from ..system76_power.gui import System76PowerGUIWorkflow
         gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
-        res = gui_wf.detect_power_profile(os_id=os_id, item_id=f"{item_id}.detect")
-        if not res.success:
-            return WorkflowResult(success=False, item_id=item_id, summary=f"detect failed: {res.summary}", data=res.data)
-        detected = (res.data or {}).get("profile", "").lower()
-        import sys
-        print(f"[verify_cli_profile] target={target} detected={detected} raw_data={res.data}", file=sys.stderr, flush=True)
+        # Try detection up to 2 times; retry if result doesn't match target.
+        detected = None
+        res = None
+        for attempt in range(2):
+            res = gui_wf.detect_power_profile(os_id=os_id, item_id=f"{item_id}.detect")
+            if not res.success:
+                return WorkflowResult(success=False, item_id=item_id, summary=f"detect failed: {res.summary}", data=res.data)
+            detected = (res.data or {}).get("profile", "").lower()
+            import sys
+            print(f"[verify_cli_profile] attempt={attempt} target={target} detected={detected}", file=sys.stderr, flush=True)
+            if detected == target.lower():
+                break
+            # Mismatch — wait and retry with fresh settings panel.
+            if attempt == 0:
+                import time
+                time.sleep(5)
         verified = (detected == target.lower())
         # Persist result for aggregation.
         self.persist_state(item_id, "state", {

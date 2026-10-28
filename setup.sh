@@ -100,7 +100,7 @@ if [ "$TARGET_PYTHON" == "python3" ]; then
     VENV_PACKAGE="python3-venv"
 fi
 
-REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools python3-gi)
+REQUIRED_PKGS=(python3-pip "$VENV_PACKAGE" jq libinput-tools python3-gi tesseract-ocr)
 
 # dotool is built from source (pinned tag) rather than installed via apt,
 # so pull in its build dependencies instead of the tool package itself.
@@ -187,11 +187,11 @@ if [ "$UPDATE_MODE" == true ]; then
     echo "Update mode: refreshing pip and Python dependencies..."
     python3 -m pip install -U pip
     python3 -m pip install -U -e ".[dev]"
-    python3 -m pip install -U pytest
+    python3 -m pip install -U pytest opencv-python
 elif [ ! -f .venv/.deps_installed ]; then
     python3 -m pip install -U pip
     python3 -m pip install -e ".[dev]"
-    python3 -m pip install -U pytest
+    python3 -m pip install -U pytest opencv-python
     touch .venv/.deps_installed
 fi
 

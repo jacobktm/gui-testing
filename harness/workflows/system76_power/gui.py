@@ -507,26 +507,10 @@ class System76PowerGUIWorkflow(Workflow):
         """
         if os_id == "ubuntu-26.04":
             expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
-            prompt = (
-                "Look at the screenshot. One power profile option is "
-                "currently selected or highlighted (it may have a checkmark, "
-                "different color, or bold text). "
-                "Which one is selected? "
-                "Answer with ONLY one word: 'performance', 'balanced', or 'battery'. "
-                "If you see 'Power Saver' or 'Battery Saver', answer 'battery'. "
-                "If you see 'High Performance', answer 'performance'."
-            )
+            prompt = "Which performance profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
         else:
             expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
-            prompt = (
-                "Look at the screenshot. One power profile option is "
-                "currently selected or highlighted (it may have a checkmark, "
-                "different color, or bold text). "
-                "Which one is selected? "
-                "Answer with ONLY one word: 'performance', 'balanced', or 'battery'. "
-                "If you see 'Power Saver' or 'Battery Saver', answer 'battery'. "
-                "If you see 'High Performance', answer 'performance'."
-            )
+            prompt = "Which performance profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
 
         # Dismiss any open panels first by clicking center (twice).
         try:
@@ -546,10 +530,10 @@ class System76PowerGUIWorkflow(Workflow):
         except Exception:
             pass
         time.sleep(10)
-        # Try detection up to 2 times.
+        # Try detection up to 3 times.
         value = None
         result = None
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 value, result = self.driver.capture_and_detect(
                     prompt,

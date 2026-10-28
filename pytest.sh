@@ -126,7 +126,7 @@ if $NEEDS_REBOOT_SETUP; then
     # Create sudoers rule (prompts for password)
     # Defaults !requiretty allows sudo without a TTY (needed for reboot mid-test).
     SUDOERS_CONTENT="Defaults !requiretty
-$USER ALL=(ALL) NOPASSWD: /usr/bin/python3 -m harness.reboot *, /usr/bin/systemctl restart com.system76.PowerDaemon.service, /usr/bin/systemctl reboot, /usr/bin/systemctl reboot -i, /usr/bin/systemctl reboot --no-block, /usr/sbin/reboot, /sbin/reboot, /usr/sbin/reboot -f, /sbin/reboot -f, /bin/systemctl reboot, /bin/systemctl reboot -i, /bin/systemctl reboot --no-block, /usr/bin/tee /proc/sysrq-trigger, /usr/bin/mkdir -p /var/lib/gui-testing, /usr/bin/tee /var/lib/gui-testing/*"
+$USER ALL=(ALL) NOPASSWD: /usr/bin/python3 -m harness.reboot *, /usr/bin/systemctl restart com.system76.PowerDaemon.service, /usr/bin/systemctl reboot, /usr/bin/systemctl reboot -i, /usr/bin/systemctl reboot --no-block, /usr/sbin/reboot, /sbin/reboot, /usr/sbin/reboot -f, /sbin/reboot -f, /bin/systemctl reboot, /bin/systemctl reboot -i, /bin/systemctl reboot --no-block, /usr/bin/tee /proc/sysrq-trigger, /usr/bin/tee /etc/greetd/*, /usr/bin/mkdir -p /var/lib/gui-testing, /usr/bin/tee /var/lib/gui-testing/*"
     echo "$SUDOERS_CONTENT" | sudo tee "$SUDOERS_FILE" > /dev/null
     sudo chmod 0440 "$SUDOERS_FILE"
     CREATED_SUDOERS=true

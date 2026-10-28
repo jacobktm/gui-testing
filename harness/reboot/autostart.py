@@ -106,6 +106,7 @@ export GUI_TESTING_RESUME_RUN={quoted_run_dir}
 export GUI_TESTING_RESUMED=1
 export RUN_DESTRUCTIVE_TESTS=1
 export GUI_TESTING_AUTOSTART=1
+export GUI_TESTING_SETUP_DONE=1
 
 LOG_FILE={quoted_run_dir}/resume/pytest-output.log
 mkdir -p {quoted_run_dir}/resume

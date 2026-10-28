@@ -523,6 +523,17 @@ class System76Power:
         if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
             print("  [setup_autologin] already done by pytest.sh, skipping", flush=True)
             return True
+        # Also skip if autologin is already enabled (e.g., resumed run).
+        try:
+            from harness.reboot.session import COSMIC_GREETER_CONFIG, GREETD_CONFIG, _read_privileged
+            for cfg in (COSMIC_GREETER_CONFIG, GREETD_CONFIG):
+                if cfg.exists():
+                    text = _read_privileged(cfg)
+                    if text and "[initial_session]" in text:
+                        print("  [setup_autologin] autologin already enabled, skipping", flush=True)
+                        return True
+        except Exception:
+            pass
         try:
             from harness.reboot import AutologinManager
 

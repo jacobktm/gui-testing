@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ..detection import parse_detection, to_dotool_normalized
+from .set_of_mark import detect_element_coords
 from ..dotool import click, mouseto
 from ..ollama_client import Ollama
 from ..screenshots import capture, crop_active_display
@@ -33,6 +34,58 @@ class GuiDriver:
         self.go_to(coords, dtproc=proc)
         click(dtproc=proc)
         return self
+
+    def detect_coords_som(
+        self,
+        target_description: str,
+        *,
+        item_id: str | None = None,
+        phase: str = "detect",
+        step: str = "som_coords",
+        out_dir: str | None = None,
+    ) -> tuple[float, float] | None:
+        """Use Set-of-Mark to find normalized coordinates of a UI element.
+
+        Detects UI elements via OpenCV, annotates with IDs, asks Ollama
+        which ID matches the target, returns normalized (x, y).
+        """
+        out_dir = out_dir or "/tmp/opencode/gui"
+        os.makedirs(out_dir, exist_ok=True)
+        shot_path = os.path.join(out_dir, f"screenshot_{phase}.png")
+        from ..screenshots.screenshot import capture
+        screenshot = capture(shot_path)
+
+        active_path = os.path.join(out_dir, f"active_{phase}.png")
+        from ..screenshots.screenshot import crop_active_display
+        crop = crop_active_display(screenshot, active_path)
+
+        # Wait for screenshot notification.
+        import time as _t
+        _t.sleep(5)
+
+        from ..config import ollama_config
+        cfg = ollama_config()
+        coords = detect_element_coords(
+            str(crop.path),
+            target_description,
+            ollama_ip=cfg.get("REMOTE_OLLAMA_IP", "127.0.0.1"),
+            ollama_port=cfg.get("REMOTE_OLLAMA_PORT", "11434"),
+            ollama_model=cfg.get("model", "qwen3-vl:8b"),
+        )
+
+        if coords is not None and self.artifacts is not None and item_id:
+            try:
+                self.artifacts.save_text(
+                    item_id, phase,
+                    f"target={target_description} coords={coords}\n",
+                    step=step,
+                )
+            except Exception:
+                pass
+
+        import sys
+        print(f"[detect_coords_som] {target_description} -> {coords}", file=sys.stderr, flush=True)
+        return coords
 
     def capture_and_detect(
         self,

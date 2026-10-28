@@ -393,12 +393,11 @@ class System76Power:
         # (e.g. blocked by inhibitor locks or confirmation dialogs).
         reboot_cmds = [
             ['sudo', '-n', 'reboot', '-f'],                            # force, bypass inhibitors
+            ['sudo', '-n', 'reboot'],                                    # standard reboot
+            ['reboot', '-f'],                                           # direct (polkit)
+            ['reboot'],                                                  # polkit (no sudo)
             ['sudo', '-n', 'systemctl', 'reboot'],                      # standard
             ['systemctl', 'reboot'],                                     # polkit (no sudo)
-            ['sudo', '-n', 'systemctl', 'reboot', '-i'],               # ignore inhibitors
-            ['sudo', '-n', 'systemctl', 'reboot', '--no-block'],        # don't wait
-            ['sudo', '-n', 'reboot'],                                    # standard reboot
-            ['reboot', '-f'],                                           # direct
         ]
         for cmd in reboot_cmds:
             print(f"  Trying reboot: {' '.join(cmd)}", flush=True)
@@ -407,9 +406,9 @@ class System76Power:
             stderr = (result.get('stderr') or '').strip()
             print(f"    rc={rc} stderr={stderr!r}", flush=True)
             if rc in (0, None):
-                # Wait to see if reboot actually happens.
-                for wait in range(12):
-                    time.sleep(5)
+                # Wait to see if reboot actually happens (shorter wait).
+                for wait in range(6):
+                    time.sleep(2)
                     # Check both persistent and ephemeral markers.
                     marker_cleared = False
                     if self._persistent_marker is not None and not self._persistent_marker.exists():
@@ -417,10 +416,10 @@ class System76Power:
                     if self._ephemeral_marker is not None and not self._ephemeral_marker.exists():
                         marker_cleared = True
                     if marker_cleared:
-                        print(f"  Reboot confirmed (marker cleared after {(wait+1)*5}s)", flush=True)
+                        print(f"  Reboot confirmed (marker cleared after {(wait+1)*2}s)", flush=True)
                         return True
                 # Marker still present - try next method.
-                print(f"  Reboot not confirmed (marker still present after 60s), trying next method...", flush=True)
+                print(f"  Reboot not confirmed (marker still present after 12s), trying next method...", flush=True)
         # If none confirmed a reboot, force it via sysrq.
         print(f"  No reboot method confirmed; forcing reboot via sysrq", flush=True)
         try:

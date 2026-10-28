@@ -56,20 +56,32 @@ COORD_SOURCE = {
 }
 
 
-def cache_display_geometry() -> dict | None:
-    """Call get_display() early and cache the result. Call this during setup."""
+def cache_display_geometry(*, force: bool = False) -> dict | None:
+    """Call get_display() and cache the result. Call this during setup.
+
+    On resumed runs (after reboot), force=True re-runs get_display() even if
+    cached, since the display may not have been ready on the first attempt.
+    """
     global _DISPLAY_GEOMETRY
-    if _DISPLAY_GEOMETRY is not None:
+    if _DISPLAY_GEOMETRY is not None and not force:
         return _DISPLAY_GEOMETRY
-    try:
-        from ..display.display import get_display
-        geom = get_display()
-        if geom and geom.get("width", 0) > 0 and geom.get("height", 0) > 0:
-            _DISPLAY_GEOMETRY = geom
-            return geom
-    except Exception:
-        pass
-    return None
+    import os
+    resumed = os.environ.get("GUI_TESTING_RESUMED") == "1"
+    if resumed:
+        force = True
+    # Retry a few times in case the display isn't ready after boot.
+    for attempt in range(5):
+        try:
+            from ..display.display import get_display
+            geom = get_display()
+            if geom and geom.get("width", 0) > 0 and geom.get("height", 0) > 0:
+                _DISPLAY_GEOMETRY = geom
+                return geom
+        except Exception:
+            pass
+        import time
+        time.sleep(2)
+    return _DISPLAY_GEOMETRY
 
 
 def get_display_resolution() -> tuple[int, int]:

@@ -125,9 +125,12 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     # Cache display geometry early (before any GUI tests run).
+    # Force re-detection on resumed runs (after reboot).
     try:
         from harness.gui.coords import cache_display_geometry
-        cache_display_geometry()
+        import os
+        force = os.environ.get("GUI_TESTING_RESUMED") == "1"
+        cache_display_geometry(force=force)
     except Exception:
         pass
     # Pre-grant screenshot permission on COSMIC to avoid dialog during tests.

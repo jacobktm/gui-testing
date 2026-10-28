@@ -292,32 +292,38 @@ def pytest_sessionfinish(session, exitstatus):
         return
     # A reboot kills this process, so this only runs once the run really
     # finishes (or is interrupted); restore the machine either way.
+    print("CLEANUP: calling finish_reboot", flush=True)
     finish_reboot(username=username)
     config._gui_reboot_finished = True
+    print("CLEANUP: finish_reboot done", flush=True)
 
     # Final reboot after cleanup (signals test completion to the user).
     # Must happen BEFORE sudoers cleanup (needs passwordless sudo).
     if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
+        print("CLEANUP: triggering final reboot", flush=True)
         try:
-            subprocess.run(
+            r = subprocess.run(
                 ["sudo", "-n", "systemctl", "reboot"],
                 capture_output=True, text=True, timeout=10,
             )
-        except Exception:
-            pass
+            print(f"CLEANUP: reboot rc={r.returncode} stderr={r.stderr.strip()}", flush=True)
+        except Exception as e:
+            print(f"CLEANUP: reboot exception: {e}", flush=True)
         # Give the reboot a moment to start.
         import time
         time.sleep(5)
 
     # Clean up passwordless sudoers rule if pytest.sh created one.
     if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
+        print("CLEANUP: removing sudoers rule", flush=True)
         try:
-            subprocess.run(
+            r = subprocess.run(
                 ["sudo", "-n", "python3", "-m", "harness.reboot", "cleanup"],
                 capture_output=True, text=True, timeout=10,
             )
-        except Exception:
-            pass
+            print(f"CLEANUP: sudoers cleanup rc={r.returncode} stdout={r.stdout.strip()} stderr={r.stderr.strip()}", flush=True)
+        except Exception as e:
+            print(f"CLEANUP: sudoers cleanup exception: {e}", flush=True)
 
 
 @pytest.fixture(scope="session")

@@ -392,13 +392,12 @@ class System76Power:
         # systemctl reboot can return 0 without rebooting on some systems
         # (e.g. blocked by inhibitor locks or confirmation dialogs).
         reboot_cmds = [
-            ['sudo', '-n', 'systemctl', 'reboot', '-i'],              # ignore inhibitors
-            ['sudo', '-n', 'systemctl', 'reboot', '--no-block'],       # don't wait
-            ['sudo', '-n', 'systemctl', 'reboot'],                      # standard
             ['sudo', '-n', 'reboot', '-f'],                            # force, bypass inhibitors
-            ['sudo', '-n', 'reboot'],                                    # standard reboot
-            ['systemctl', 'reboot', '-i'],                              # polkit (no sudo)
+            ['sudo', '-n', 'systemctl', 'reboot'],                      # standard
             ['systemctl', 'reboot'],                                     # polkit (no sudo)
+            ['sudo', '-n', 'systemctl', 'reboot', '-i'],               # ignore inhibitors
+            ['sudo', '-n', 'systemctl', 'reboot', '--no-block'],        # don't wait
+            ['sudo', '-n', 'reboot'],                                    # standard reboot
             ['reboot', '-f'],                                           # direct
         ]
         for cmd in reboot_cmds:

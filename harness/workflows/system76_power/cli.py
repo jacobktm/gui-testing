@@ -559,10 +559,13 @@ class System76PowerCLIWorkflow(Workflow):
         # No guard needed - save_state is fixed. If state is missing on resume,
         # the test runs as first invocation (saves state, reboots).
 
-        # First invocation: read current brightness, reboot, check if preserved.
+        # First invocation: set brightness to 50%, reboot, check if preserved.
+        bh = BrightnessHandler()
+        bh.set_brightness_percent(50)
+        time.sleep(2)
         current = get_brightness()
         max_b = get_max_brightness()
-        log(f"[brightness_reboot] first invocation, brightness={current}/{max_b}")
+        log(f"[brightness_reboot] first invocation, brightness={current}/{max_b} (set to 50%)")
         if current is None:
             return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
 

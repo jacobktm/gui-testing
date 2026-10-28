@@ -125,11 +125,7 @@ def ask_vlm_for_element(
     """Ask Ollama which numbered ID corresponds to the target element."""
     import ollama as _ollama
     client = _ollama.Client(host=f"http://{ip}:{port}")
-    prompt = (
-        f"Scan this annotated screenshot. "
-        f"What is the green ID number next to the {target_description}? "
-        f"State only the number."
-    )
+    prompt = f"Scan this annotated screenshot. What is the green ID number next to the {target_description}? State only the number."
     try:
         response = client.chat(
             model=model,

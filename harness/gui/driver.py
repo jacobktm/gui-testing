@@ -122,15 +122,7 @@ class GuiDriver:
             return None
 
         # Ask Ollama which ID is selected and what its label is.
-        prompt = (
-            "This screenshot has green numbered boxes around UI elements. "
-            "One power profile option is currently selected or highlighted "
-            "(it may have a checkmark, different color, or bold text). "
-            "Which number is next to the selected profile? "
-            "Also tell me the label of that element. "
-            "Format: number,label (e.g., 5,Balanced). "
-            "Return ONLY that, nothing else."
-        )
+        prompt = "This screenshot has green numbered boxes around UI elements. One power profile option is currently selected or highlighted. Which number is next to the selected profile? Also tell me the label. Format: number,label (e.g., 5,Balanced). Return ONLY that."
 
         response = None
         try:

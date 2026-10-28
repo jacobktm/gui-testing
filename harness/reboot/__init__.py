@@ -154,8 +154,13 @@ def finish_reboot(*, username: str | None = None) -> bool:
 
     unit_removed = False
     for u in users_to_try:
-        if remove_resume_unit(username=u):
-            unit_removed = True
+        print(f"[finish_reboot] removing resume unit for {u}", file=sys.stderr, flush=True)
+        try:
+            if remove_resume_unit(username=u):
+                unit_removed = True
+                print(f"[finish_reboot] removed resume unit for {u}", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"[finish_reboot] remove_resume_unit({u}) exception: {e}", file=sys.stderr, flush=True)
 
     # Also try to find unit files in all home directories.
     for home in Path("/home").iterdir():
@@ -163,6 +168,7 @@ def finish_reboot(*, username: str | None = None) -> bool:
             continue
         unit_file = home / ".config" / "systemd" / "user" / "gui-testing-resume.service"
         if unit_file.exists():
+            print(f"[finish_reboot] found unit file: {unit_file}", file=sys.stderr, flush=True)
             try:
                 unit_file.unlink()
                 unit_removed = True
@@ -170,7 +176,7 @@ def finish_reboot(*, username: str | None = None) -> bool:
                 try:
                     subprocess.run(
                         ["sudo", "-n", "rm", "-f", str(unit_file)],
-                        capture_output=True, text=True, timeout=10,
+                        capture_output=True, text=True, timeout=5,
                     )
                     unit_removed = True
                 except Exception:

@@ -561,6 +561,11 @@ class System76PowerCLIWorkflow(Workflow):
                 except Exception:
                     pass
 
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="passed" if ok else "failed")
+                except Exception:
+                    pass
             return WorkflowResult(success=ok, item_id=item_id, summary=f"settled={settled} after={after} ok={ok}", data={"ok": ok, "after": after, "settled": settled, "readings": readings})
 
         # No guard needed - save_state is fixed. If state is missing on resume,
@@ -575,6 +580,13 @@ class System76PowerCLIWorkflow(Workflow):
         log(f"[brightness_reboot] first invocation, brightness={current}/{max_b} (set to 50%)")
         if current is None:
             return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
+
+        # Record status before reboot.
+        if self.artifacts is not None and item_id:
+            try:
+                self.artifacts.record_item(item_id, status="passed")
+            except Exception:
+                pass
 
         try:
             boot_id_before = Path("/proc/sys/kernel/random/boot_id").read_text().strip()

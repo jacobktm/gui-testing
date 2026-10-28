@@ -102,17 +102,59 @@ def generate_set_of_mark(
         if not chosen_pos:
             chosen_pos = (bx + 2, by + th + 2)
 
+        # OCR the element text for a label.
+        label_text = ocr_element_text(image_path, (bx, by, bw, bh))
+        label_text = label_text.strip()[:20]
+
         cv2.putText(img, text_str, chosen_pos, font, font_scale, (0, 255, 0), thickness)
+
+        # Draw label below the ID if OCR found text.
+        if label_text:
+            label_pos = (chosen_pos[0], chosen_pos[1] + th + 4)
+            cv2.putText(img, label_text, label_pos, font, font_scale * 0.8, (255, 255, 0), thickness)
 
         center_x = bx + (bw // 2)
         center_y = by + (bh // 2)
-        element_map[element_id] = (center_x, center_y)
+        element_map[element_id] = (center_x, center_y, label_text)
         element_id += 1
 
     if output_path is None:
         output_path = str(image_path).replace(".", "_som.")
     cv2.imwrite(str(output_path), img)
     return str(output_path), element_map
+
+
+def ocr_element_text(image_path: str, bbox: tuple) -> str:
+    """Use tesseract to OCR text from a bounding box region."""
+    if not HAS_CV2:
+        return ""
+    try:
+        import subprocess
+        import cv2
+        img = cv2.imread(str(image_path))
+        if img is None:
+            return ""
+        x, y, w, h = bbox
+        pad = 4
+        x1 = max(0, x - pad)
+        y1 = max(0, y - pad)
+        x2 = min(img.shape[1], x + w + pad)
+        y2 = min(img.shape[0], y + h + pad)
+        crop = img[y1:y2, x1:x2]
+        crop_path = str(image_path).replace(".", "_crop.", 1)
+        cv2.imwrite(crop_path, crop)
+        result = subprocess.run(
+            ["tesseract", crop_path, "stdout", "--psm", "7"],
+            capture_output=True, text=True, timeout=10,
+        )
+        text = result.stdout.strip()
+        try:
+            os.remove(crop_path)
+        except OSError:
+            pass
+        return text
+    except Exception:
+        return ""
 
 
 def ask_vlm_for_element(
@@ -125,7 +167,7 @@ def ask_vlm_for_element(
     """Ask Ollama which numbered ID corresponds to the target element."""
     import ollama as _ollama
     client = _ollama.Client(host=f"http://{ip}:{port}")
-    prompt = f"Scan this annotated screenshot. What is the green ID number next to the {target_description}? State only the number."
+    prompt = f"Scan this annotated screenshot. Each green box has an ID number and possibly a text label. What is the green ID number next to the {target_description}? State only the number."
     try:
         response = client.chat(
             model=model,
@@ -170,5 +212,6 @@ def detect_element_coords(
     if selected_id is None or selected_id not in element_map:
         return None
 
-    cx, cy = element_map[selected_id]
+    entry = element_map[selected_id]
+    cx, cy = entry[0], entry[1]
     return (cx / w, cy / h)

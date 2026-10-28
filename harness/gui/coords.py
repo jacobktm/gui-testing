@@ -55,12 +55,29 @@ COORD_SOURCE = {
 
 def get_display_resolution() -> tuple[int, int]:
     """Return (width, height) of the primary display."""
-    # Try GTK/GDK first — use the primary monitor (x=0, y=0).
+    # Try xrandr first (most reliable, works on X11 and XWayland).
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["xrandr"], capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            if "*" in line:
+                parts = line.strip().split()
+                if parts:
+                    res = parts[0]
+                    if "x" in res:
+                        w, h = res.split("x")
+                        w, h = int(w), int(h)
+                        if w > 0 and h > 0:
+                            return (w, h)
+    except Exception:
+        pass
+    # Try GTK/GDK.
     try:
         from .display import get_monitors
         monitors = get_monitors()
         if monitors:
-            # Find primary monitor (top-left origin).
             primary = None
             for m in monitors:
                 if m.get("x", -1) == 0 and m.get("y", -1) == 0:
@@ -70,23 +87,6 @@ def get_display_resolution() -> tuple[int, int]:
                 primary = monitors[0]
             if primary.get("width", 0) > 0 and primary.get("height", 0) > 0:
                 return (primary["width"], primary["height"])
-    except Exception:
-        pass
-    # Fallback: xrandr.
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["xrandr"], capture_output=True, text=True, timeout=5
-        )
-        for line in result.stdout.splitlines():
-            if "*" in line:
-                # "   1920x1080    143.88*+"
-                parts = line.strip().split()
-                if parts:
-                    res = parts[0]
-                    if "x" in res:
-                        w, h = res.split("x")
-                        return (int(w), int(h))
     except Exception:
         pass
     # Fallback: assume 1920x1080.

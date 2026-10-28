@@ -392,12 +392,12 @@ class System76Power:
         # systemctl reboot can return 0 without rebooting on some systems
         # (e.g. blocked by inhibitor locks or confirmation dialogs).
         reboot_cmds = [
-            ['sudo', '-n', 'reboot', '-f'],                            # force, bypass inhibitors
-            ['sudo', '-n', 'reboot'],                                    # standard reboot
-            ['reboot', '-f'],                                           # direct (polkit)
+            ['systemctl', 'reboot'],                                     # polkit (no sudo)
             ['reboot'],                                                  # polkit (no sudo)
             ['sudo', '-n', 'systemctl', 'reboot'],                      # standard
-            ['systemctl', 'reboot'],                                     # polkit (no sudo)
+            ['sudo', '-n', 'reboot'],                                    # standard reboot
+            ['sudo', '-n', 'reboot', '-f'],                            # force, bypass inhibitors
+            ['reboot', '-f'],                                           # direct (polkit)
         ]
         for cmd in reboot_cmds:
             print(f"  Trying reboot: {' '.join(cmd)}", flush=True)
@@ -407,7 +407,7 @@ class System76Power:
             print(f"    rc={rc} stderr={stderr!r}", flush=True)
             if rc in (0, None):
                 # Wait to see if reboot actually happens (shorter wait).
-                for wait in range(6):
+                for wait in range(3):
                     time.sleep(2)
                     # Check both persistent and ephemeral markers.
                     marker_cleared = False

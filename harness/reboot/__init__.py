@@ -171,24 +171,29 @@ def finish_reboot(*, username: str | None = None) -> bool:
 
     # For COSMIC, try force_restore first (doesn't depend on state file).
     restored = False
+    # Try via sudo (sudoers may still be in place).
     try:
-        from .session import force_restore_autologin
-        restored = force_restore_autologin()
-        import sys
-        print(f"[finish_reboot] force_restore_autologin: {restored}", file=sys.stderr, flush=True)
+        import subprocess
+        r = subprocess.run(
+            ["sudo", "-n", "python3", "-m", "harness.reboot", "force-restore"],
+            capture_output=True, text=True, timeout=10,
+        )
+        print(f"[finish_reboot] sudo force-restore: rc={r.returncode} stdout={r.stdout.strip()} stderr={r.stderr.strip()}", file=sys.stderr, flush=True)
+        if r.returncode == 0:
+            restored = True
     except Exception as e:
-        import sys
-        print(f"[finish_reboot] force_restore exception: {e}", file=sys.stderr, flush=True)
-    if not restored:
-        restored = restore_autologin()
-        import sys
-        print(f"[finish_reboot] restore_autologin: {restored}", file=sys.stderr, flush=True)
+        print(f"[finish_reboot] sudo force-restore exception: {e}", file=sys.stderr, flush=True)
+    # Fallback: try in-process (works if running as root).
     if not restored:
         try:
             from .session import force_restore_autologin
             restored = force_restore_autologin()
-        except Exception:
-            pass
+            print(f"[finish_reboot] in-process force_restore: {restored}", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"[finish_reboot] in-process force_restore exception: {e}", file=sys.stderr, flush=True)
+    if not restored:
+        restored = restore_autologin()
+        print(f"[finish_reboot] restore_autologin: {restored}", file=sys.stderr, flush=True)
     # Clean up persistent reboot marker.
     if username:
         try:

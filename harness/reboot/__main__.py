@@ -71,7 +71,7 @@ def _cmd_cleanup(username: str | None) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m harness.reboot")
-    parser.add_argument("action", choices=("status", "enable", "restore", "cleanup", "cleanup-all"))
+    parser.add_argument("action", choices=("status", "enable", "restore", "cleanup", "cleanup-all", "force-restore"))
     parser.add_argument("--user", help="GUI user (defaults to the detected session user)")
     parser.add_argument("--run-dir", help="artifact run directory for the resume unit")
     parser.add_argument("--workdir", help="working directory for the resumed pytest run")
@@ -93,6 +93,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"resume unit: {'installed' if plan.installed else 'failed'} ({plan.unit_path or plan.reason})")
         return 0 if result.enabled else 1
+
+    if args.action == "force-restore":
+        from .session import force_restore_autologin
+        restored = force_restore_autologin()
+        print(f"force restore: {restored}")
+        return 0 if restored else 1
 
     if args.action == "cleanup":
         return _cmd_cleanup(session.username)

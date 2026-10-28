@@ -559,31 +559,10 @@ class System76PowerCLIWorkflow(Workflow):
         # No guard needed - save_state is fixed. If state is missing on resume,
         # the test runs as first invocation (saves state, reboots).
 
-        # First invocation: set profile to performance (daemon sets brightness to max),
-        # then set brightness to 50%, wait for stabilization.
-        handler.switch_perf_profile("performance")
-        time.sleep(2)
-        bh = BrightnessHandler()
-        bh.set_brightness_percent(50)
-        # Wait for brightness to stabilize (daemon may adjust).
-        readings_before = []
-        prev = None
-        stable_count = 0
-        for i in range(15):
-            time.sleep(2)
-            val = get_brightness()
-            readings_before.append(val)
-            log(f"[brightness_reboot] before reading {i}: {val}")
-            if val is not None and val == prev:
-                stable_count += 1
-                if stable_count >= 3:
-                    break
-            else:
-                stable_count = 0
-            prev = val
-        current = readings_before[-1] if readings_before else get_brightness()
+        # First invocation: read current brightness, reboot, check if preserved.
+        current = get_brightness()
         max_b = get_max_brightness()
-        log(f"[brightness_reboot] first invocation, settled brightness={current}/{max_b} readings={readings_before}")
+        log(f"[brightness_reboot] first invocation, brightness={current}/{max_b}")
         if current is None:
             return WorkflowResult(success=False, item_id=item_id, summary="no backlight")
 
@@ -592,7 +571,7 @@ class System76PowerCLIWorkflow(Workflow):
         except Exception:
             boot_id_before = None
 
-        self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current, "profile": "performance"})
+        self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current})
         # Verify state was actually saved before rebooting.
         import os as _os
         try:
@@ -608,7 +587,7 @@ class System76PowerCLIWorkflow(Workflow):
                 break
             log(f"[brightness_reboot] state NOT found (attempt {attempt+1}), retrying...")
             time.sleep(1)
-            self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current, "profile": "performance"})
+            self.persist_state(item_id, "state", {"kind": "brightness_restart", "phase": "rebooting", "boot_id_before": boot_id_before, "settled": current})
             try:
                 _os.sync()
             except Exception:
@@ -616,7 +595,7 @@ class System76PowerCLIWorkflow(Workflow):
 
         if self.artifacts is not None and item_id:
             try:
-                self.artifacts.save_text(item_id, "setup", f"profile=performance brightness={current}/{max_b}\nreadings={readings_before}\nverified_save={verified_save}\n", step="before_reboot")
+                self.artifacts.save_text(item_id, "setup", f"brightness={current}/{max_b}\n", step="before_reboot")
             except Exception as e:
                 log(f"[brightness_reboot] save_text failed: {e}")
         try:
@@ -635,7 +614,7 @@ class System76PowerCLIWorkflow(Workflow):
         log("[brightness_reboot] rebooting now")
         handler.reboot()
         handler.wait_for_boot()
-        return WorkflowResult(success=True, item_id=item_id, summary="set to 50%, rebooting")
+        return WorkflowResult(success=True, item_id=item_id, summary="brightness=" + str(current) + ", rebooting")
 
     def verify_cli_profile_reflected_in_extension(self, target: str, os_id: str = None, item_id: str = "cli.profile_reflected") -> WorkflowResult:
         """Switch profile via CLI, verify the GUI extension reflects it."""

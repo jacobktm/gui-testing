@@ -397,14 +397,13 @@ class System76Power:
         # systemctl reboot can return 0 without rebooting on some systems
         # (e.g. blocked by inhibitor locks or confirmation dialogs).
         reboot_cmds = [
+            ['loginctl', 'reboot'],                                      # logind (no sudo, reliable)
             ['systemctl', 'reboot'],                                     # polkit (no sudo)
             ['reboot'],                                                  # polkit (no sudo)
-            ['systemctl', 'reboot', '--check-inhibitors=no'],            # ignore inhibitors
+            ['pkexec', 'systemctl', 'reboot'],                           # polkit graphical
             ['reboot', '-f'],                                           # force, bypass inhibitors
-            ['systemctl', 'reboot', '--force'],                          # systemd force
             ['sudo', '-n', 'systemctl', 'reboot'],                      # sudo (if sudoers present)
             ['sudo', '-n', 'reboot', '-f'],                            # sudo force
-            ['sudo', '-n', 'reboot'],                                    # sudo standard
         ]
         for cmd in reboot_cmds:
             print(f"  Trying reboot: {' '.join(cmd)}", flush=True)
@@ -430,7 +429,7 @@ class System76Power:
         # If none confirmed a reboot, force it via sysrq.
         print(f"  No reboot method confirmed; forcing reboot via sysrq", flush=True)
         try:
-            self._run(['sudo', '-n', 'sh', '-c', 'echo b > /proc/sysrq-trigger'], check=False, timeout=10)
+            self._run(['sh', '-c', 'echo b | sudo tee /proc/sysrq-trigger > /dev/null'], check=False, timeout=10)
         except Exception:
             pass
         return True

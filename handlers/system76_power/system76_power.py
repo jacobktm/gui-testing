@@ -359,6 +359,11 @@ class System76Power:
         return False
 
     def reboot(self) -> bool:
+        # Restart system76-power daemon to ensure it's not in a bad state.
+        try:
+            self.restart_daemon()
+        except Exception:
+            pass
         # Sync filesystems before rebooting.
         try:
             self._run(['sync'], check=False, timeout=10)

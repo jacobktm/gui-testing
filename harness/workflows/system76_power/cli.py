@@ -112,6 +112,8 @@ class System76PowerCLIWorkflow(Workflow):
                 "target": "integrated",
                 "current": "integrated",
             })
+            import time
+            time.sleep(10)
             handler.setup_autologin()
             handler.reboot()
             handler.wait_for_boot()
@@ -323,6 +325,9 @@ class System76PowerCLIWorkflow(Workflow):
                     "results": results,
                     "logged_output": logged_output,
                 })
+                # Give the GPU time to settle after mode switch.
+                import time
+                time.sleep(10)
                 handler.setup_autologin()
                 handler.reboot()
                 handler.wait_for_boot()

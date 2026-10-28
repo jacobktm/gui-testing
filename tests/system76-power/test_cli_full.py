@@ -48,12 +48,12 @@ class TestSystem76PowerCLIFull:
             pass
 
     @pytest.mark.reboot
-    def test_graphics_transition_to_integrated(self, artifacts):
-        """Transition from current mode to integrated (ensures starting point)."""
+    def test_graphics_transition_to_hybrid(self, artifacts):
+        """Transition from current mode to hybrid (ensures starting point)."""
         from harness.workflows import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_to_integrated(item_id="cli.graphics_transition.to_integrated")
+        res = wf.transition_to_hybrid(item_id="cli.graphics_transition.to_hybrid")
         if (res.data or {}).get("skipped"):
             pytest.skip("not switchable graphics")
         assert res.success, res.summary

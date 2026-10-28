@@ -212,6 +212,7 @@ class System76PowerGUIWorkflow(Workflow):
             return []
 
         chained_order = [
+            ("hybrid", "integrated"),
             ("integrated", "nvidia"),
             ("nvidia", "hybrid"),
             ("hybrid", "compute"),
@@ -220,22 +221,21 @@ class System76PowerGUIWorkflow(Workflow):
             ("hybrid", "nvidia"),
             ("nvidia", "compute"),
             ("compute", "hybrid"),
-            ("hybrid", "integrated"),
             ("integrated", "compute"),
             ("compute", "nvidia"),
             ("nvidia", "integrated"),
         ]
         path = [(s, t) for s, t in chained_order if s in modes and t in modes]
 
-        if current != "integrated" and "integrated" in modes and current in modes:
-            forced = (current, "integrated")
+        if current != "hybrid" and "hybrid" in modes and current in modes:
+            forced = (current, "hybrid")
             if forced not in path:
                 path = [forced] + path
 
         return path
 
-    def transition_to_integrated(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transition.to_integrated") -> WorkflowResult:
-        """Transition from current mode to integrated via GUI clicks."""
+    def transition_to_hybrid(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transition.to_hybrid") -> WorkflowResult:
+        """Transition from current mode to hybrid via GUI clicks."""
         if not os_id.startswith("pop-22"):
             if self.artifacts is not None and item_id:
                 try:
@@ -263,11 +263,11 @@ class System76PowerGUIWorkflow(Workflow):
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
         current = handler.get_graphics_mode()
-        if current == "integrated":
-            return WorkflowResult(success=True, item_id=item_id, summary="already integrated", data={"from": current, "to": "integrated", "actual": current, "verified": True})
+        if current == "hybrid":
+            return WorkflowResult(success=True, item_id=item_id, summary="already hybrid", data={"from": current, "to": "hybrid", "actual": current, "verified": True})
 
-        # Switch to integrated via GUI
-        self.set_graphics_mode_gui("integrated", os_id=os_id, item_id=item_id)
+        # Switch to hybrid via GUI
+        self.set_graphics_mode_gui("hybrid", os_id=os_id, item_id=item_id)
         import time
         time.sleep(90)
         self.dismiss_menus()
@@ -275,8 +275,8 @@ class System76PowerGUIWorkflow(Workflow):
         handler.reboot()
         handler.wait_for_boot()
         current = handler.get_graphics_mode()
-        verified = (current == "integrated")
-        return WorkflowResult(success=verified, item_id=item_id, summary=f"to_integrated (actual: {current}, verified={verified})", data={"from": current, "to": "integrated", "actual": current, "verified": verified})
+        verified = (current == "hybrid")
+        return WorkflowResult(success=verified, item_id=item_id, summary=f"to_hybrid (actual: {current}, verified={verified})", data={"from": current, "to": "hybrid", "actual": current, "verified": verified})
 
     def transition_graphics(self, source: str, target: str, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
         """Execute a single graphics mode transition via GUI clicks.
@@ -468,8 +468,8 @@ class System76PowerGUIWorkflow(Workflow):
                     pass
             return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
-        # First, ensure we start in integrated mode.
-        to_int = self.transition_to_integrated(os_id=os_id, item_id=f"{item_id}.to_integrated")
+        # First, ensure we start in hybrid mode.
+        to_int = self.transition_to_hybrid(os_id=os_id, item_id=f"{item_id}.to_hybrid")
 
         order = self.get_transition_order(item_id=item_id)
         results = []

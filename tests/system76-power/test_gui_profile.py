@@ -170,13 +170,13 @@ class TestSystem76PowerGUI:
         assert detected == target, f"extension shows {detected}, expected {target}"
 
     @pytest.mark.reboot
-    def test_gui_transition_to_integrated(self, artifacts):
+    def test_gui_transition_to_hybrid(self, artifacts):
         """Pop!_OS 22.04 only."""
         os_id = _os_id()
         if not os_id.startswith("pop-22"):
             pytest.skip("GUI graphics only on Pop!_OS 22.04")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_to_integrated(os_id="pop-22.04")
+        res = wf.transition_to_hybrid(os_id="pop-22.04")
         assert res.success, res.summary
 
     @pytest.mark.reboot

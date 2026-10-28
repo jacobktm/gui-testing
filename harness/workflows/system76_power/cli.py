@@ -70,11 +70,11 @@ class System76PowerCLIWorkflow(Workflow):
                 pass
         return WorkflowResult(success=True, item_id=item_id, summary=f"{mode}->{newm}", data={"graphics": newm})
 
-    def transition_to_integrated(self, item_id: str = "cli.graphics_transition.to_integrated") -> WorkflowResult:
-        """Transition from the current mode to integrated (if not already there).
+    def transition_to_hybrid(self, item_id: str = "cli.graphics_transition.to_hybrid") -> WorkflowResult:
+        """Transition from the current mode to hybrid (if not already there).
 
-        This ensures the system starts in integrated mode before running
-        the ordered transition sequence.  If already in integrated, this
+        This ensures the system starts in hybrid mode before running
+        the ordered transition sequence.  If already in hybrid, this
         is a no-op that returns success.
         """
         try:
@@ -92,25 +92,25 @@ class System76PowerCLIWorkflow(Workflow):
                 return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
             current = handler.get_graphics_mode()
-            print(f"transition_to_integrated: current mode = {current!r}", flush=True)
+            print(f"transition_to_hybrid: current mode = {current!r}", flush=True)
 
-            if current == "integrated":
-                print("  Already in integrated mode, no transition needed.", flush=True)
-                return WorkflowResult(success=True, item_id=item_id, summary="already integrated", data={"from": current, "to": "integrated", "actual": current, "verified": True})
+            if current == "hybrid":
+                print("  Already in hybrid mode, no transition needed.", flush=True)
+                return WorkflowResult(success=True, item_id=item_id, summary="already hybrid", data={"from": current, "to": "hybrid", "actual": current, "verified": True})
 
-            # Switch to integrated.
-            result = handler._run(['system76-power', 'graphics', 'integrated'], check=False)
+            # Switch to hybrid.
+            result = handler._run(['system76-power', 'graphics', 'hybrid'], check=False)
             logged = (result.get('stdout') or '').strip()
-            print(f"  system76-power graphics integrated: rc={result.get('returncode')} output={logged!r}", flush=True)
+            print(f"  system76-power graphics hybrid: rc={result.get('returncode')} output={logged!r}", flush=True)
             if result.get('returncode') not in (0, None):
-                return WorkflowResult(success=False, item_id=item_id, summary=f"switch to integrated failed: {result.get('stderr', '')}", data={"from": current, "to": "integrated", "actual": current, "verified": False})
+                return WorkflowResult(success=False, item_id=item_id, summary=f"switch to hybrid failed: {result.get('stderr', '')}", data={"from": current, "to": "hybrid", "actual": current, "verified": False})
 
             self.persist_state(item_id, "state", {
                 "kind": "graphics_transition",
                 "phase": "rebooting",
                 "source": current,
-                "target": "integrated",
-                "current": "integrated",
+                "target": "hybrid",
+                "current": "hybrid",
             })
             import time
             time.sleep(10)
@@ -118,30 +118,30 @@ class System76PowerCLIWorkflow(Workflow):
             handler.reboot()
             handler.wait_for_boot()
             current = handler.get_graphics_mode()
-            verified = (current == "integrated")
+            verified = (current == "hybrid")
             print(f"  After reboot: mode = {current!r}, verified = {verified}", flush=True)
 
             self.persist_state(item_id, "state", {
                 "kind": "graphics_transition",
                 "phase": "done",
                 "source": current,
-                "target": "integrated",
+                "target": "hybrid",
                 "current": current,
-                "results": [{"from": current, "to": "integrated", "actual": current, "verified": verified}],
+                "results": [{"from": current, "to": "hybrid", "actual": current, "verified": verified}],
                 "completed": 1,
             })
 
             if self.artifacts is not None and item_id:
                 try:
-                    self.artifacts.save_text(item_id, "action", f"transition -> {current} to integrated (verified={verified})\n", step="transition")
+                    self.artifacts.save_text(item_id, "action", f"transition -> {current} to hybrid (verified={verified})\n", step="transition")
                 except Exception:
                     pass
 
             return WorkflowResult(
                 success=verified,
                 item_id=item_id,
-                summary=f"to_integrated (actual: {current}, verified={verified})",
-                data={"from": current, "to": "integrated", "actual": current, "verified": verified},
+                summary=f"to_hybrid (actual: {current}, verified={verified})",
+                data={"from": current, "to": "hybrid", "actual": current, "verified": verified},
             )
         except Exception as e:
             import traceback
@@ -181,8 +181,9 @@ class System76PowerCLIWorkflow(Workflow):
 
         # Fixed chained order: each transition's source is the previous
         # transition's target, avoiding redundant mode switches.
-        # Starts from 'integrated' (transition_to_integrated ensures this).
+        # Starts from 'hybrid' (transition_to_hybrid ensures this).
         chained_order = [
+            ("hybrid", "integrated"),
             ("integrated", "nvidia"),
             ("nvidia", "hybrid"),
             ("hybrid", "compute"),
@@ -191,7 +192,6 @@ class System76PowerCLIWorkflow(Workflow):
             ("hybrid", "nvidia"),
             ("nvidia", "compute"),
             ("compute", "hybrid"),
-            ("hybrid", "integrated"),
             ("integrated", "compute"),
             ("compute", "nvidia"),
             ("nvidia", "integrated"),
@@ -199,9 +199,9 @@ class System76PowerCLIWorkflow(Workflow):
         # Filter to only include modes that exist on this system.
         path = [(s, t) for s, t in chained_order if s in modes and t in modes]
 
-        # If not starting in integrated, prepend the transition to integrated.
-        if current != "integrated" and "integrated" in modes and current in modes:
-            forced = (current, "integrated")
+        # If not starting in hybrid, prepend the transition to hybrid.
+        if current != "hybrid" and "hybrid" in modes and current in modes:
+            forced = (current, "hybrid")
             if forced not in path:
                 path = [forced] + path
 

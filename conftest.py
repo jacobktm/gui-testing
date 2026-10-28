@@ -124,6 +124,12 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    # Cache display geometry early (before any GUI tests run).
+    try:
+        from harness.gui.coords import cache_display_geometry
+        cache_display_geometry()
+    except Exception:
+        pass
     # Pre-grant screenshot permission on COSMIC to avoid dialog during tests.
     try:
         subprocess.run(

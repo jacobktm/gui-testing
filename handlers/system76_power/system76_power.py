@@ -359,6 +359,11 @@ class System76Power:
         return False
 
     def reboot(self) -> bool:
+        # Enable SysRq for reliable reboot fallback.
+        try:
+            self._run(['sh', '-c', 'echo 1 | sudo tee /proc/sys/kernel/sysrq > /dev/null'], check=False, timeout=5)
+        except Exception:
+            pass
         # Restart system76-power daemon to ensure it's not in a bad state.
         try:
             self.restart_daemon()
@@ -398,12 +403,6 @@ class System76Power:
         # (e.g. blocked by inhibitor locks or confirmation dialogs).
         reboot_cmds = [
             ['sh', '-c', 'echo b | sudo tee /proc/sysrq-trigger > /dev/null'],  # SysRq (most reliable)
-            ['reboot', '-f'],                                           # force, bypass inhibitors
-            ['systemctl', 'reboot', '--force'],                          # systemd force
-            ['systemctl', 'reboot'],                                     # polkit (no sudo)
-            ['reboot'],                                                  # polkit (no sudo)
-            ['sudo', '-n', 'systemctl', 'reboot'],                      # sudo (if sudoers present)
-            ['sudo', '-n', 'reboot', '-f'],                            # sudo force
         ]
         for cmd in reboot_cmds:
             print(f"  Trying reboot: {' '.join(cmd)}", flush=True)
@@ -412,20 +411,11 @@ class System76Power:
             stderr = (result.get('stderr') or '').strip()
             print(f"    rc={rc} stderr={stderr!r}", flush=True)
             if rc in (0, None):
-                # Wait to see if reboot actually happens (shorter wait).
-                for wait in range(3):
-                    time.sleep(2)
-                    # Check both persistent and ephemeral markers.
-                    marker_cleared = False
-                    if self._persistent_marker is not None and not self._persistent_marker.exists():
-                        marker_cleared = True
-                    if self._ephemeral_marker is not None and not self._ephemeral_marker.exists():
-                        marker_cleared = True
-                    if marker_cleared:
-                        print(f"  Reboot confirmed (marker cleared after {(wait+1)*2}s)", flush=True)
-                        return True
-                # Marker still present - try next method.
-                print(f"  Reboot not confirmed (marker still present after 12s), trying next method...", flush=True)
+                # Wait to see if reboot actually happens.
+                print(f"  Waiting 5s to see if reboot happens...", flush=True)
+                time.sleep(5)
+                # If we're still here, reboot didn't work.
+                print(f"  Reboot not confirmed, trying next method...", flush=True)
         # If none confirmed a reboot, force it via sysrq.
         print(f"  No reboot method confirmed; forcing reboot via sysrq", flush=True)
         try:

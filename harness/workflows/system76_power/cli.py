@@ -263,37 +263,37 @@ class System76PowerCLIWorkflow(Workflow):
             current = handler.get_graphics_mode()
             print(f"  transition {source}->{target}: current (source) mode = {current!r}", flush=True)
 
-            # If already in target mode, verify and return without rebooting.
-            if current == target:
-                print(f"  Already in {target} mode, no transition needed.", flush=True)
-                verified = True
-                gui_verified = None
-                entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
-                results.append(entry)
-                done.add((source, target))
-                self.persist_state(item_id, "state", {
-                    "kind": "graphics_transition",
-                    "phase": "done",
-                    "source": source,
-                    "target": target,
-                    "current": current,
-                    "results": results,
-                    "completed": len(results),
-                })
-                if self.artifacts is not None and item_id:
-                    try:
-                        self.artifacts.save_text(item_id, "action", "transition -> " + source + " to " + target + " (verified=" + str(verified) + ")\n", step="transition")
-                    except Exception:
-                        pass
-                return WorkflowResult(
-                    success=verified,
-                    item_id=item_id,
-                    summary=f"{source}->{target} (actual: {current}, verified={verified})",
-                    data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
-                )
-
             # --- Phase: start - record source, switch to target, save, reboot ---
             if phase == "start":
+                # If already in target mode, verify and return without rebooting.
+                if current == target:
+                    print(f"  Already in {target} mode, no transition needed.", flush=True)
+                    verified = True
+                    gui_verified = None
+                    entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
+                    results.append(entry)
+                    done.add((source, target))
+                    self.persist_state(item_id, "state", {
+                        "kind": "graphics_transition",
+                        "phase": "done",
+                        "source": source,
+                        "target": target,
+                        "current": current,
+                        "results": results,
+                        "completed": len(results),
+                    })
+                    if self.artifacts is not None and item_id:
+                        try:
+                            self.artifacts.save_text(item_id, "action", "transition -> " + source + " to " + target + " (verified=" + str(verified) + ")\n", step="transition")
+                        except Exception:
+                            pass
+                    return WorkflowResult(
+                        success=verified,
+                        item_id=item_id,
+                        summary=f"{source}->{target} (actual: {current}, verified={verified})",
+                        data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
+                    )
+
                 # Record the current mode as source (verified before switch).
                 actual_source = current if current else source
                 print(f"  switching to {target}...", flush=True)

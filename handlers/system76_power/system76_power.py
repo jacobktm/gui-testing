@@ -399,16 +399,17 @@ class System76Power:
             self._ephemeral_marker = None
 
         # Try each method until one actually reboots the system.
-        # systemctl reboot can return 0 without rebooting on some systems
-        # (e.g. blocked by inhibitor locks or confirmation dialogs).
+        # SysRq first (kernel-level, works even when userspace is stuck).
+        # Then force reboot, then standard methods.
         reboot_cmds = [
+            ['sh', '-c', 'echo b | sudo tee /proc/sysrq-trigger > /dev/null'],  # SysRq (kernel-level)
+            ['reboot', '-f'],                                           # force, bypass inhibitors
+            ['systemctl', 'reboot', '--force', '--force'],               # double force, bypass systemd
+            ['systemctl', 'reboot', '--force'],                          # systemd force
+            ['sudo', '-n', 'reboot', '-f'],                            # sudo force
+            ['sudo', '-n', 'systemctl', 'reboot'],                      # sudo standard
             ['systemctl', 'reboot'],                                     # polkit (no sudo)
             ['reboot'],                                                  # polkit (no sudo)
-            ['reboot', '-f'],                                           # force, bypass inhibitors
-            ['systemctl', 'reboot', '--force'],                          # systemd force
-            ['sudo', '-n', 'systemctl', 'reboot'],                      # sudo (if sudoers present)
-            ['sudo', '-n', 'reboot', '-f'],                            # sudo force
-            ['sh', '-c', 'echo b | sudo tee /proc/sysrq-trigger > /dev/null'],  # SysRq (last resort)
         ]
         for cmd in reboot_cmds:
             print(f"  Trying reboot: {' '.join(cmd)}", flush=True)

@@ -46,8 +46,9 @@ def generate_set_of_mark(
     h, w = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray, threshold1=50, threshold2=150)
-    kernel = np.ones((5, 5), np.uint8)
-    dilated = cv2.dilate(edges, kernel, iterations=1)
+    # Larger kernel to group checkmark + adjacent text into one bounding box.
+    kernel = np.ones((7, 7), np.uint8)
+    dilated = cv2.dilate(edges, kernel, iterations=2)
     contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     # Gather valid bounding boxes.
@@ -167,7 +168,7 @@ def ask_vlm_for_element(
     """Ask Ollama which numbered ID corresponds to the target element."""
     import ollama as _ollama
     client = _ollama.Client(host=f"http://{ip}:{port}")
-    prompt = f"Scan this annotated screenshot. Each green box has an ID number and possibly a text label. What is the green ID number next to the {target_description}? State only the number."
+    prompt = f"Scan this annotated screenshot. Each green box has an ID number. Find the UI element that is currently selected or highlighted (it may have a checkmark, different color, or bold text next to it). What is the green ID number of that element? State only the number."
     try:
         response = client.chat(
             model=model,

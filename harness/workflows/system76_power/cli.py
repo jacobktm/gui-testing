@@ -94,6 +94,10 @@ class System76PowerCLIWorkflow(Workflow):
             current = handler.get_graphics_mode()
             print(f"transition_to_hybrid: current mode = {current!r}", flush=True)
 
+            # Settle delay: give the system time to fully initialize after boot.
+            import time
+            time.sleep(15)
+
             if current == "hybrid":
                 print("  Already in hybrid mode, no transition needed.", flush=True)
                 return WorkflowResult(success=True, item_id=item_id, summary="already hybrid", data={"from": current, "to": "hybrid", "actual": current, "verified": True})
@@ -262,6 +266,10 @@ class System76PowerCLIWorkflow(Workflow):
 
             current = handler.get_graphics_mode()
             print(f"  transition {source}->{target}: current (source) mode = {current!r}", flush=True)
+
+            # Settle delay: give the system time to fully initialize after boot.
+            import time
+            time.sleep(15)
 
             # --- Phase: start - record source, switch to target, save, reboot ---
             if phase == "start":

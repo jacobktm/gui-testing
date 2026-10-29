@@ -474,6 +474,9 @@ class System76Power:
                         print(f"  Warning: boot ID/markers unchanged, system may not have rebooted", flush=True)
                     else:
                         print(f"  System rebooted and is {status} (after {elapsed}s)", flush=True)
+                    # Settle delay: give the system time to fully initialize.
+                    print(f"  Settling for 10s...", flush=True)
+                    time.sleep(10)
                     # Clean up markers.
                     for m in (persistent_marker, ephemeral_marker):
                         try:

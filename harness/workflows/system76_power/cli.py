@@ -1,8 +1,19 @@
 from __future__ import annotations
 
 from handlers.system76_power import System76Power
+from .state import load_switchable_state as _load_switchable, save_switchable_state as _save_switchable
+from harness.reboot.system import setup_autologin as _setup_autologin
 
 from ..base import Workflow, WorkflowResult
+
+
+def _reboot_and_wait(handler) -> bool:
+    """Reboot and wait for the system to come back (reboot-aware resume)."""
+    from harness.reboot.system import reboot, wait_for_boot
+
+    run_dir = handler.artifacts.run_dir if getattr(handler, "artifacts", None) is not None else None
+    reboot(run_dir)
+    return wait_for_boot(run_dir)
 
 
 class System76PowerCLIWorkflow(Workflow):
@@ -84,10 +95,10 @@ class System76PowerCLIWorkflow(Workflow):
                 phase="action",
                 artifacts=self.artifacts,
             )
-            switchable = System76Power.load_switchable_state()
+            switchable = _load_switchable()
             if switchable is None:
                 switchable = handler.switchable()
-                System76Power.save_switchable_state(switchable)
+                _save_switchable(switchable)
             if switchable != "switchable":
                 return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
@@ -118,9 +129,8 @@ class System76PowerCLIWorkflow(Workflow):
             })
             import time
             time.sleep(10)
-            handler.setup_autologin()
-            handler.reboot()
-            handler.wait_for_boot()
+            _setup_autologin()
+            _reboot_and_wait(handler)
             current = handler.get_graphics_mode()
             verified = (current == "hybrid")
             print(f"  After reboot: mode = {current!r}, verified = {verified}", flush=True)
@@ -169,10 +179,10 @@ class System76PowerCLIWorkflow(Workflow):
             phase="verify",
             artifacts=self.artifacts,
         )
-        switchable = System76Power.load_switchable_state()
+        switchable = _load_switchable()
         if switchable is None:
             switchable = handler.switchable()
-            System76Power.save_switchable_state(switchable)
+            _save_switchable(switchable)
         if switchable != "switchable":
             return []
 
@@ -237,10 +247,10 @@ class System76PowerCLIWorkflow(Workflow):
             )
 
             # Skip on non-switchable systems or non-applicable OS.
-            switchable = System76Power.load_switchable_state()
+            switchable = _load_switchable()
             if switchable is None:
                 switchable = handler.switchable()
-                System76Power.save_switchable_state(switchable)
+                _save_switchable(switchable)
             if switchable != "switchable":
                 return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
 
@@ -338,9 +348,8 @@ class System76PowerCLIWorkflow(Workflow):
                 import time
                 settle = 30 if target == "integrated" else 10
                 time.sleep(settle)
-                handler.setup_autologin()
-                handler.reboot()
-                handler.wait_for_boot()
+                _setup_autologin()
+                _reboot_and_wait(handler)
                 # If we survive (no reboot happened), continue.
                 current = handler.get_graphics_mode()
                 phase = "rebooting"
@@ -391,7 +400,7 @@ class System76PowerCLIWorkflow(Workflow):
                         except Exception:
                             pass
                         gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
-                        det = gui_wf.detect_graphics_mode(os_id=os_id)
+                        det = gui_wf.detect_graphics_mode(os_id=os_id, target=target)
                         if det.success:
                             detected = (det.data or {}).get("graphics", "").lower()
                             gui_verified = (detected == target.lower())
@@ -640,10 +649,9 @@ class System76PowerCLIWorkflow(Workflow):
 
 
 
-        handler.setup_autologin()
+        _setup_autologin()
         log("[brightness_reboot] rebooting now")
-        handler.reboot()
-        handler.wait_for_boot()
+        _reboot_and_wait(handler)
         return WorkflowResult(success=True, item_id=item_id, summary="brightness=" + str(current) + ", rebooting")
 
     def verify_cli_profile_reflected_in_extension(self, target: str, os_id: str = None, item_id: str = "cli.profile_reflected") -> WorkflowResult:
@@ -686,22 +694,13 @@ class System76PowerCLIWorkflow(Workflow):
 
         from ..system76_power.gui import System76PowerGUIWorkflow
         gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
-        # Try detection up to 2 times; retry if result doesn't match target.
-        detected = None
-        res = None
-        for attempt in range(2):
-            res = gui_wf.detect_power_profile(os_id=os_id, item_id=f"{item_id}.detect")
-            if not res.success:
-                return WorkflowResult(success=False, item_id=item_id, summary=f"detect failed: {res.summary}", data=res.data)
-            detected = (res.data or {}).get("profile", "").lower()
-            import sys
-            print(f"[verify_cli_profile] attempt={attempt} target={target} detected={detected}", file=sys.stderr, flush=True)
-            if detected == target.lower():
-                break
-            # Mismatch — wait and retry with fresh settings panel.
-            if attempt == 0:
-                import time
-                time.sleep(5)
+        # GUI detection itself retries up to 5 times until detected == target.
+        res = gui_wf.detect_power_profile(os_id=os_id, item_id=f"{item_id}.detect", target=target)
+        if not res.success:
+            return WorkflowResult(success=False, item_id=item_id, summary=f"detect failed: {res.summary}", data=res.data)
+        detected = (res.data or {}).get("profile", "").lower()
+        import sys
+        print(f"[verify_cli_profile] target={target} detected={detected}", file=sys.stderr, flush=True)
         verified = (detected == target.lower())
         # Persist result for aggregation.
         self.persist_state(item_id, "state", {

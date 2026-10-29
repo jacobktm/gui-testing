@@ -13,7 +13,9 @@ Useful when a run was interrupted after it enabled autologin.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -71,13 +73,30 @@ def _cmd_cleanup(username: str | None) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m harness.reboot")
-    parser.add_argument("action", choices=("status", "enable", "restore", "cleanup", "cleanup-all", "force-restore"))
+    parser.add_argument("action", choices=("status", "enable", "restore", "cleanup", "cleanup-all", "force-restore", "reboot"))
     parser.add_argument("--user", help="GUI user (defaults to the detected session user)")
     parser.add_argument("--run-dir", help="artifact run directory for the resume unit")
     parser.add_argument("--workdir", help="working directory for the resumed pytest run")
     args = parser.parse_args(argv)
 
     session = detect_session(args.user)
+    if args.action == "reboot":
+        # Direct kernel reboot(2) syscall via ctypes.  Runs as root under
+        # sudo (the sudoers rule whitelists this module); the syscall either
+        # reboots the machine immediately or fails loudly.
+        os.sync()
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        rc = libc.reboot(ctypes.c_uint(0x01234567))  # RB_AUTOBOOT
+        if rc != 0:
+            errno = ctypes.get_errno()
+            print(f"reboot syscall failed: errno={errno} ({os.strerror(errno)})",
+                  file=sys.stderr, flush=True)
+            sys.stdout.flush()
+            return 1
+        # If the syscall succeeded, the kernel is already rebooting and this
+        # process dies before reaching this point.
+        return 0
+
     if args.action == "status":
         print(json.dumps(_status(session.username), indent=2))
         return 0

@@ -281,7 +281,7 @@ class TestSystem76PowerGUI:
             pass
         time.sleep(1)
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.detect_power_profile(os_id)
+        res = wf.detect_power_profile(os_id, target=target)
         assert res.success, res.summary
         detected = (res.data or {}).get("profile", "").lower()
         assert detected == target, f"extension shows {detected}, expected {target}"

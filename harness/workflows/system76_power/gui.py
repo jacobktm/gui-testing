@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 from harness.brightness import BrightnessHandler
+from .state import load_switchable_state as _load_switchable, save_switchable_state as _save_switchable
 from handlers.system76_power import System76Power
+from harness.reboot.system import setup_autologin as _setup_autologin
 
 from ...gui import Coords, GuiDriver
 from ...gui.coords import adjust_coords, COORD_SOURCE
 from ..base import Workflow, WorkflowResult
+
+
+def _reboot_and_wait(handler) -> bool:
+    """Reboot and wait for the system to come back (reboot-aware resume)."""
+    from harness.reboot.system import reboot, wait_for_boot
+
+    run_dir = handler.artifacts.run_dir if getattr(handler, "artifacts", None) is not None else None
+    reboot(run_dir)
+    return wait_for_boot(run_dir)
 
 
 class System76PowerGUIWorkflow(Workflow):
@@ -87,7 +98,7 @@ class System76PowerGUIWorkflow(Workflow):
         # Also verify via GUI detection
         gui_verified = None
         try:
-            det = self.detect_power_profile(os_id=os_id)
+            det = self.detect_power_profile(os_id=os_id, target=target)
             if det.success:
                 detected = (det.data or {}).get("profile", "").lower()
                 gui_verified = (detected == target.lower())
@@ -197,10 +208,10 @@ class System76PowerGUIWorkflow(Workflow):
             phase="verify",
             artifacts=self.artifacts,
         )
-        switchable = System76Power.load_switchable_state()
+        switchable = _load_switchable()
         if switchable is None:
             switchable = handler.switchable()
-            System76Power.save_switchable_state(switchable)
+            _save_switchable(switchable)
         if switchable != "switchable":
             return []
 
@@ -250,10 +261,10 @@ class System76PowerGUIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        switchable = System76Power.load_switchable_state()
+        switchable = _load_switchable()
         if switchable is None:
             switchable = handler.switchable()
-            System76Power.save_switchable_state(switchable)
+            _save_switchable(switchable)
         if switchable != "switchable":
             if self.artifacts is not None and item_id:
                 try:
@@ -271,9 +282,8 @@ class System76PowerGUIWorkflow(Workflow):
         import time
         time.sleep(90)
         self.dismiss_menus()
-        handler.setup_autologin()
-        handler.reboot()
-        handler.wait_for_boot()
+        _setup_autologin()
+        _reboot_and_wait(handler)
         current = handler.get_graphics_mode()
         verified = (current == "hybrid")
         return WorkflowResult(success=verified, item_id=item_id, summary=f"to_hybrid (actual: {current}, verified={verified})", data={"from": current, "to": "hybrid", "actual": current, "verified": verified})
@@ -297,10 +307,10 @@ class System76PowerGUIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        switchable = System76Power.load_switchable_state()
+        switchable = _load_switchable()
         if switchable is None:
             switchable = handler.switchable()
-            System76Power.save_switchable_state(switchable)
+            _save_switchable(switchable)
         if switchable != "switchable":
             if self.artifacts is not None and item_id:
                 try:
@@ -336,7 +346,7 @@ class System76PowerGUIWorkflow(Workflow):
             gui_verified = None
             # GUI verification (only on 22.04).
             try:
-                det = self.detect_graphics_mode(os_id=os_id)
+                det = self.detect_graphics_mode(os_id=os_id, target=target)
                 if det.success:
                     detected = (det.data or {}).get("graphics", "").lower()
                     gui_verified = (detected == target.lower())
@@ -382,9 +392,8 @@ class System76PowerGUIWorkflow(Workflow):
                 "current": target,
                 "results": results,
             })
-            handler.setup_autologin()
-            handler.reboot()
-            handler.wait_for_boot()
+            _setup_autologin()
+            _reboot_and_wait(handler)
             current = handler.get_graphics_mode()
             phase = "rebooting"
             print(f"  [GUI] after reboot: mode = {current!r} (target={target!r})", flush=True)
@@ -398,7 +407,7 @@ class System76PowerGUIWorkflow(Workflow):
             # GUI verification (only on 22.04).
             gui_verified = None
             try:
-                det = self.detect_graphics_mode(os_id=os_id)
+                det = self.detect_graphics_mode(os_id=os_id, target=target)
                 if det.success:
                     detected = (det.data or {}).get("graphics", "").lower()
                     gui_verified = (detected == target.lower())
@@ -456,10 +465,10 @@ class System76PowerGUIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        switchable = System76Power.load_switchable_state()
+        switchable = _load_switchable()
         if switchable is None:
             switchable = handler.switchable()
-            System76Power.save_switchable_state(switchable)
+            _save_switchable(switchable)
         if switchable != "switchable":
             if self.artifacts is not None and item_id:
                 try:
@@ -499,11 +508,15 @@ class System76PowerGUIWorkflow(Workflow):
         self,
         os_id: str,
         item_id: str = "gui.power_profile_detect",
+        target: str | None = None,
     ) -> WorkflowResult:
         """Detect current power profile via UI.
 
         Ubuntu uses 'Power Saver' label; Pop!_OS uses 'High Performance',
         'Balanced', 'Battery Saver' or 'Battery'.
+
+        ``target``, when given, must be matched before detection is accepted;
+        otherwise a recognized profile (even the wrong one) ends the loop.
         """
         if os_id == "ubuntu-26.04":
             expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
@@ -530,10 +543,24 @@ class System76PowerGUIWorkflow(Workflow):
         except Exception:
             pass
         time.sleep(10)
-        # Try detection up to 3 times.
+
+        def _normalize(raw: str) -> str:
+            """Map LLM responses to the three CLI profile names."""
+            n = (raw or "").lower().strip()
+            if "power saver" in n or "battery saver" in n:
+                return "battery"
+            if "high performance" in n:
+                return "performance"
+            for p in ("performance", "balanced", "battery"):
+                if p in n:
+                    return p
+            return n
+
+        # Try detection up to 5 times before failing.
         value = None
         result = None
-        for attempt in range(3):
+        normalized = None
+        for attempt in range(5):
             try:
                 value, result = self.driver.capture_and_detect(
                     prompt,
@@ -543,9 +570,8 @@ class System76PowerGUIWorkflow(Workflow):
                     step="power_profile",
                 )
             except Exception as exc:
-                return WorkflowResult(
-                    success=False, item_id=item_id, summary=f"detect failed: {exc}"
-                )
+                print(f"  [detect_power_profile] attempt {attempt} failed: {exc}", flush=True)
+                value, result = None, None
             # Click center to dismiss screenshot notification, then wait.
             try:
                 self.driver.go_to((0.5, 0.5))
@@ -554,45 +580,47 @@ class System76PowerGUIWorkflow(Workflow):
                 pass
             import time as _t
             _t.sleep(5)
-            # If detected value matches a known profile, accept it.
-            if value and value.lower() in {e.lower() for e in expected}:
-                break
+            if value is not None:
+                normalized = _normalize(value)
+                recognized = normalized in ("performance", "balanced", "battery")
+                match = normalized == target.lower() if target is not None else recognized
+                print(
+                    f"  [detect_power_profile] attempt={attempt} target={target} detected={normalized} match={match}",
+                    flush=True,
+                )
+                if match:
+                    break
             # Otherwise retry after re-opening settings.
-            if attempt == 0:
-                try:
-                    self.open_power_settings(os_id)
-                except Exception:
-                    pass
-                import time as _t2
-                _t2.sleep(3)
+            try:
+                self.open_power_settings(os_id)
+            except Exception:
+                pass
+            import time as _t2
+            _t2.sleep(3)
 
         if self.artifacts is not None and item_id:
             try:
-                ok = value.lower() in {e.lower() for e in expected}
-                self.artifacts.record_item(item_id, status="passed" if ok else "failed")
+                verified = normalized is not None and (
+                    target is None or normalized == target.lower()
+                ) and normalized in ("performance", "balanced", "battery")
+                self.artifacts.record_item(item_id, status="passed" if verified else "failed")
             except Exception:
                 pass
 
-        # Normalize: map GUI labels to CLI names.
-        normalized = value.lower().strip()
-        # Handle multi-word responses from LLM.
-        if "power saver" in normalized or "battery saver" in normalized:
-            normalized = "battery"
-        elif "high performance" in normalized:
-            normalized = "performance"
-        elif normalized not in ("performance", "balanced", "battery"):
-            # Fallback: check if any keyword is in the response.
-            if "battery" in normalized:
-                normalized = "battery"
-            elif "performance" in normalized:
-                normalized = "performance"
-            elif "balanced" in normalized:
-                normalized = "balanced"
+        if normalized is None:
+            return WorkflowResult(
+                success=False, item_id=item_id, summary="detect failed after 5 attempts"
+            )
+
+        # Normalize: map GUI labels to CLI names (already done in _normalize).
+        verified = normalized in ("performance", "balanced", "battery") and (
+            target is None or normalized == target.lower()
+        )
 
         return WorkflowResult(
-            success=value.lower() in {e.lower() for e in expected},
+            success=verified,
             item_id=item_id,
-            summary=f"profile={value}",
+            summary=f"profile={normalized}",
             data={"profile": normalized, "raw": value, "normalized": result.normalized},
         )
 
@@ -637,8 +665,13 @@ class System76PowerGUIWorkflow(Workflow):
         self,
         os_id: str = "pop-22.04",
         item_id: str = "gui.graphics_mode_detect",
+        target: str | None = None,
     ) -> WorkflowResult:
-        """Detect graphics mode via UI for the given OS."""
+        """Detect graphics mode via UI for the given OS.
+
+        ``target``, when given, must be matched before detection is accepted;
+        otherwise a recognized mode (even the wrong one) ends the loop.
+        """
         expected = {"integrated", "hybrid", "compute", "nvidia"}
         if os_id == "pop-22.04":
             prompt = "Look at this screenshot of Pop!_OS 22.04 graphics settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
@@ -651,16 +684,68 @@ class System76PowerGUIWorkflow(Workflow):
             prompt = "Look at this screenshot of the power settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
 
         try:
-            value, result = self.driver.capture_and_detect(
-                prompt,
-                expected,
-                item_id=item_id,
-                phase="detect",
-                step="graphics_mode",
-            )
+            # Dismiss any open panels first by clicking center.
+            try:
+                self.driver.go_to((0.5, 0.5))
+                self.driver.click_at((0.5, 0.5))
+            except Exception:
+                pass
+            import time as _t0
+            _t0.sleep(1)
+            # Open power settings fresh.
+            try:
+                self.open_power_settings(os_id)
+            except Exception:
+                pass
+            import time as _t1
+            _t1.sleep(10)
+            # Try detection up to 5 times before failing.
+            value = None
+            result = None
+            for attempt in range(5):
+                try:
+                    value, result = self.driver.capture_and_detect(
+                        prompt,
+                        expected,
+                        item_id=item_id,
+                        phase="detect",
+                        step="graphics_mode",
+                    )
+                except Exception as exc:
+                    print(f"  [detect_graphics_mode] attempt {attempt} failed: {exc}", flush=True)
+                    value, result = None, None
+                # Click center to dismiss screenshot notification, then wait.
+                try:
+                    self.driver.go_to((0.5, 0.5))
+                    self.driver.click_at((0.5, 0.5))
+                except Exception:
+                    pass
+                import time as _t2
+                _t2.sleep(5)
+                # If detected value matches a known (or target) mode, accept it.
+                if value:
+                    match = value.lower() == target.lower() if target is not None else value.lower() in {e.lower() for e in expected}
+                    print(
+                        f"  [detect_graphics_mode] attempt={attempt} target={target} detected={value.lower()} match={match}",
+                        flush=True,
+                    )
+                    if match:
+                        break
+                # Otherwise reopen settings before the next attempt.
+                try:
+                    self.open_power_settings(os_id)
+                except Exception:
+                    pass
+                import time as _t3
+                _t3.sleep(3)
         except Exception as exc:
             return WorkflowResult(
                 success=False, item_id=item_id, summary=f"detect failed: {exc}"
+            )
+
+        if value is None:
+            return WorkflowResult(
+                success=False, item_id=item_id, summary="detect failed after 5 attempts"
             )
 
         # Click center to dismiss screenshot notification, then wait.
@@ -674,13 +759,18 @@ class System76PowerGUIWorkflow(Workflow):
 
         if self.artifacts is not None and item_id:
             try:
-                ok = value.lower() in expected
-                self.artifacts.record_item(item_id, status="passed" if ok else "failed")
+                verified = value.lower() in expected and (
+                    target is None or value.lower() == target.lower()
+                )
+                self.artifacts.record_item(item_id, status="passed" if verified else "failed")
             except Exception:
                 pass
 
+        verified = value.lower() in expected and (
+            target is None or value.lower() == target.lower()
+        )
         return WorkflowResult(
-            success=value.lower() in expected,
+            success=verified,
             item_id=item_id,
             summary=f"graphics={value}",
             data={"graphics": value, "normalized": result.normalized},

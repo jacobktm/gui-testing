@@ -19,10 +19,11 @@ class TestSystem76PowerCLIFull:
 
     def test_laptop_switchable_graphics_can_be_queried(self, artifacts):
         from handlers.system76_power import System76Power
+        from harness.workflows.system76_power.state import save_switchable_state
         handler = System76Power(artifacts=artifacts)
         result = handler.switchable()
         # Persist so transition tests don't re-query.
-        System76Power.save_switchable_state(result)
+        save_switchable_state(result)
         assert result in ("switchable", "not switchable"), result
 
     def test_graphics_power_query_set(self, artifacts):

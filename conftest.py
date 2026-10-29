@@ -153,8 +153,9 @@ def pytest_configure(config):
     # Save original graphics mode before tests run (for cleanup restore).
     try:
         from handlers.system76_power import System76Power
+        from harness.workflows.system76_power.state import save_original_graphics_mode_from
         h = System76Power()
-        h.save_original_graphics_mode()
+        save_original_graphics_mode_from(h)
     except Exception:
         pass
 
@@ -274,10 +275,12 @@ def pytest_sessionfinish(session, exitstatus):
     # Restore original graphics mode if it was changed by tests.
     try:
         from handlers.system76_power import System76Power
+        from harness.workflows.system76_power.state import restore_original_graphics_mode
         h = System76Power()
-        if h.restore_original_graphics_mode():
-            h.reboot()
-            h.wait_for_boot()
+        if restore_original_graphics_mode(h):
+            from harness.reboot.system import reboot, wait_for_boot
+            reboot(None)
+            wait_for_boot(None)
     except Exception:
         pass
     # Restore brightness to max (tests may leave it at min).

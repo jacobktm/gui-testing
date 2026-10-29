@@ -96,6 +96,19 @@ GRACEFUL_REBOOT_CMDS = [
     ["sudo", "-n", "reboot", "-f"],         # force fallback
 ]
 
+# Reliable chain for graphics transitions (matches previous working behavior).
+# systemd polkit/sudo paths are more likely to actually trigger a reboot on
+# this system than the raw reboot(2) syscall.
+RELIABLE_REBOOT_CMDS = [
+    ["sudo", "-n", "reboot", "-f"],
+    ["sudo", "-n", "systemctl", "reboot"],
+    ["systemctl", "reboot", "--force", "--force"],
+    ["systemctl", "reboot", "--force"],
+    ["reboot", "-f"],
+    ["reboot"],
+    ["systemctl", "reboot"],
+]
+
 
 def reboot(run_dir: Path | None = None, graceful: bool = False) -> bool:
     """Reboot the system.
@@ -103,9 +116,9 @@ def reboot(run_dir: Path | None = None, graceful: bool = False) -> bool:
     Never returns normally if a reboot command succeeds — the kernel kills
     the process.  Returns only when every method failed.
 
-    ``graceful=True`` uses a normal systemd shutdown instead of the instant
-    reboot(2) syscall.  Use it when the test outcome depends on services
-    receiving a proper shutdown sequence.
+    ``graceful=True`` uses a normal systemd shutdown instead of an abrupt
+    reboot.  Use it when the test outcome depends on services receiving a
+    proper shutdown sequence (e.g. brightness preservation).
     """
     state = _prepare_markers(run_dir)
 
@@ -118,9 +131,21 @@ def reboot(run_dir: Path | None = None, graceful: bool = False) -> bool:
             print("  Waiting 5s to see if reboot happens...", flush=True)
             time.sleep(5)
             if Path("/proc/sys/kernel/random/boot_id").read_text().strip() != state["boot_id_before"]:
-                return True  # kernel gone at this point; line usually never runs
+                return True
             print("  Reboot not confirmed; trying next method...", flush=True)
-        print("  No graceful method confirmed; falling back to reboot(2) syscall", flush=True)
+        print("  No graceful method confirmed; falling back to other methods", flush=True)
+    else:
+        for cmd in RELIABLE_REBOOT_CMDS:
+            print(f"  Trying reboot: {' '.join(cmd)}", flush=True)
+            result = _run(cmd)
+            stderr = (result.stderr.strip() if result else "")
+            print(f"    rc={result.returncode if result else None} stderr={stderr!r}", flush=True)
+            print("  Waiting 5s to see if reboot happens...", flush=True)
+            time.sleep(5)
+            if Path("/proc/sys/kernel/random/boot_id").read_text().strip() != state["boot_id_before"]:
+                return True
+            print("  Reboot not confirmed; trying next method...", flush=True)
+        print("  No standard method confirmed; trying kernel reboot(2) syscall", flush=True)
 
     # Pre-flight: enable SysRq so the last-resort method works.
     _run(["sh", "-c", "echo 1 | sudo tee /proc/sys/kernel/sysrq > /dev/null"], timeout=5)

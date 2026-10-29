@@ -197,7 +197,31 @@ def adjust_coords(
     if src_w == dst_w and src_h == dst_h:
         return coords
     x, y = coords
-    # Convert normalized -> pixels -> normalized.
+    from math import gcd
+
+    g1 = gcd(src_w, src_h)
+    g2 = gcd(dst_w, dst_h)
+    src_ar = (src_w // g1, src_h // g1)
+    dst_ar = (dst_w // g2, dst_h // g2)
+    # For Pop!_OS style UIs, horizontal positions are fixed in normalized space
+    # across 16:9 variants; only vertical may need adjustment.
+    if src_ar == (16, 9) and dst_ar[0] == 16 and dst_ar[1] in (9, 10):
+        py = y * src_h
+        return (x, py / dst_h)
+    if src_ar[0] == 16 and src_ar[1] in (9, 10) and dst_ar == (16, 9):
+        py = y * src_h
+        return (x, py / dst_h)
+    if src_ar == dst_ar:
+        py = y * src_h
+        return (x, py / dst_h)
+    # Default: convert normalized -> pixels -> normalized.
     px = x * src_w
     py = y * src_h
-    return (px / dst_w, py / dst_h)
+    nx = px / dst_w
+    ny = py / dst_h
+    # Clamp to sane range
+    if nx < 0 or nx > 1 or ny < 0 or ny > 1:
+        # Fall back to keeping x same, scaling y only
+        py = y * src_h
+        return (x, py / dst_h)
+    return (nx, ny)

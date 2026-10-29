@@ -628,8 +628,13 @@ class System76PowerGUIWorkflow(Workflow):
         self,
         os_id: str,
         item_id: str = "gui.power_profile_detect_som",
+        target: str | None = None,
     ) -> WorkflowResult:
-        """Detect power profile using Set-of-Mark (OpenCV + Ollama ID matching)."""
+        """Detect power profile using Set-of-Mark (OpenCV + Ollama ID matching).
+
+        The driver retries up to 5 times (fresh screenshot + LLM each attempt);
+        ``target`` must be matched before detection is accepted.
+        """
         import time
         try:
             self.open_power_settings(os_id)
@@ -637,9 +642,14 @@ class System76PowerGUIWorkflow(Workflow):
             pass
         time.sleep(5)
 
-        label = self.driver.detect_power_profile_som(os_id, item_id=item_id, phase="detect", step="som_profile")
+        label = self.driver.detect_power_profile_som(os_id, item_id=item_id, phase="detect", step="som_profile", target=target)
         if label is None:
-            return WorkflowResult(success=False, item_id=item_id, summary="SoM detection failed")
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.record_item(item_id, status="failed")
+                except Exception:
+                    pass
+            return WorkflowResult(success=False, item_id=item_id, summary="SoM detection failed after 5 attempts")
 
         # Click center to dismiss notification.
         try:

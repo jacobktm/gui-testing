@@ -7,12 +7,12 @@ from harness.reboot.system import setup_autologin as _setup_autologin
 from ..base import Workflow, WorkflowResult
 
 
-def _reboot_and_wait(handler) -> bool:
+def _reboot_and_wait(handler, graceful: bool = False) -> bool:
     """Reboot and wait for the system to come back (reboot-aware resume)."""
     from harness.reboot.system import reboot, wait_for_boot
 
     run_dir = handler.artifacts.run_dir if getattr(handler, "artifacts", None) is not None else None
-    reboot(run_dir)
+    reboot(run_dir, graceful=graceful)
     return wait_for_boot(run_dir)
 
 
@@ -650,8 +650,11 @@ class System76PowerCLIWorkflow(Workflow):
 
 
         _setup_autologin()
-        log("[brightness_reboot] rebooting now")
-        _reboot_and_wait(handler)
+        # Brightness preservation depends on a normal (graceful) shutdown:
+        # services get to run their save/restore logic.  The instant reboot(2)
+        # syscall skips that and produces a different (lower) brightness.
+        log("[brightness_reboot] rebooting now (graceful)")
+        _reboot_and_wait(handler, graceful=True)
         return WorkflowResult(success=True, item_id=item_id, summary="brightness=" + str(current) + ", rebooting")
 
     def verify_cli_profile_reflected_in_extension(self, target: str, os_id: str = None, item_id: str = "cli.profile_reflected") -> WorkflowResult:

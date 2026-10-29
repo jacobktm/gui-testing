@@ -87,18 +87,44 @@ def _prepare_markers(run_dir: Path | None) -> dict:
     return state
 
 
-def reboot(run_dir: Path | None = None) -> bool:
+# Commands for a GRACEFUL reboot (systemd shutdown runs; services may save
+# state — required when the test semantics depend on a normal shutdown, e.g.
+# the brightness-preserved-across-reboot check).
+GRACEFUL_REBOOT_CMDS = [
+    ["systemctl", "reboot"],                # polkit (no sudo)
+    ["sudo", "-n", "systemctl", "reboot"],  # sudo (sudoers whitelisted)
+    ["sudo", "-n", "reboot", "-f"],         # force fallback
+]
+
+
+def reboot(run_dir: Path | None = None, graceful: bool = False) -> bool:
     """Reboot the system.
 
     Never returns normally if a reboot command succeeds — the kernel kills
     the process.  Returns only when every method failed.
+
+    ``graceful=True`` uses a normal systemd shutdown instead of the instant
+    reboot(2) syscall.  Use it when the test outcome depends on services
+    receiving a proper shutdown sequence.
     """
+    state = _prepare_markers(run_dir)
+
+    if graceful:
+        for cmd in GRACEFUL_REBOOT_CMDS:
+            print(f"  Trying graceful reboot: {' '.join(cmd)}", flush=True)
+            result = _run(cmd)
+            stderr = (result.stderr.strip() if result else "")
+            print(f"    rc={result.returncode if result else None} stderr={stderr!r}", flush=True)
+            print("  Waiting 5s to see if reboot happens...", flush=True)
+            time.sleep(5)
+            if Path("/proc/sys/kernel/random/boot_id").read_text().strip() != state["boot_id_before"]:
+                return True  # kernel gone at this point; line usually never runs
+            print("  Reboot not confirmed; trying next method...", flush=True)
+        print("  No graceful method confirmed; falling back to reboot(2) syscall", flush=True)
+
     # Pre-flight: enable SysRq so the last-resort method works.
     _run(["sh", "-c", "echo 1 | sudo tee /proc/sys/kernel/sysrq > /dev/null"], timeout=5)
     _run(["sync"], timeout=10)
-
-    state = _prepare_markers(run_dir)
-
     print("  Rebooting via kernel reboot(2) syscall (sudo harness.reboot reboot)...", flush=True)
     result = _run(["sudo", "-n", "python3", "-m", "harness.reboot", "reboot"])
     stderr = (result.stderr.strip() if result else "")

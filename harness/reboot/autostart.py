@@ -30,7 +30,7 @@ __all__ = [
 ]
 
 UNIT_NAME = "gui-testing-resume.service"
-MAX_ATTEMPTS = 10
+MAX_ATTEMPTS = 60
 
 
 @dataclass(frozen=True)
@@ -157,13 +157,18 @@ ATTEMPTS=$((ATTEMPTS + 1))
 echo "$ATTEMPTS" > {quoted_attempts}
 if [ "$ATTEMPTS" -gt {max_attempts} ]; then
     echo "resume attempt limit reached ($ATTEMPTS > {max_attempts}); giving up" >&2
+    echo "RESUME LIMIT REACHED: this boot will idle (please intervene)" | tee -a "$LOG_FILE" >&2
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -u critical "GUI Testing" "Resume attempt limit reached — run gave up." >/dev/null 2>&1 || true
+    fi
     systemctl --user disable {UNIT_NAME} >/dev/null 2>&1 || true
     exit 1
 fi
 
 cd {quoted_workdir}
-echo "=== Resuming pytest run: {quoted_run_dir} ===" | tee "$LOG_FILE"
+echo "=== Resuming pytest run: {quoted_run_dir} ===" | tee -a "$LOG_FILE"
 echo "Started at: $(date)" | tee -a "$LOG_FILE"
+echo "Attempt $ATTEMPTS of max {max_attempts}" | tee -a "$LOG_FILE"
 {command} -s --resume-run {quoted_run_dir} 2>&1 | tee -a "$LOG_FILE"
 status=${{PIPESTATUS[0]}}
 # One parameter set per reboot: do not start again on the next boot.

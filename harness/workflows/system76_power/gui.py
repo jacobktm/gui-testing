@@ -10,12 +10,12 @@ from ...gui.coords import adjust_coords, COORD_SOURCE
 from ..base import Workflow, WorkflowResult
 
 
-def _reboot_and_wait(handler) -> bool:
+def _reboot_and_wait(handler, graceful: bool = False) -> bool:
     """Reboot and wait for the system to come back (reboot-aware resume)."""
     from harness.reboot.system import reboot, wait_for_boot
 
     run_dir = handler.artifacts.run_dir if getattr(handler, "artifacts", None) is not None else None
-    reboot(run_dir)
+    reboot(run_dir, graceful=graceful)
     return wait_for_boot(run_dir)
 
 
@@ -545,15 +545,31 @@ class System76PowerGUIWorkflow(Workflow):
         time.sleep(10)
 
         def _normalize(raw: str) -> str:
-            """Map LLM responses to the three CLI profile names."""
+            """Map LLM responses to the three CLI profile names.
+
+            Prefers the model's conclusion (the last explicit mention or a
+            "selected profile is X" statement) over an early keyword hit from
+            surrounding text like the settings header ("Power & Battery").
+            """
             n = (raw or "").lower().strip()
-            if "power saver" in n or "battery saver" in n:
-                return "battery"
-            if "high performance" in n:
-                return "performance"
-            for p in ("performance", "balanced", "battery"):
-                if p in n:
-                    return p
+            if not n:
+                return ""
+            # Explicit conclusion statement wins.
+            import re
+            m = re.search(r"selected(?: performance)? profile is\s*[:*\"]?\s*(performance|balanced|battery)", n)
+            if m:
+                return m.group(1)
+            # Otherwise use the LAST occurrence of any profile word — the
+            # sentence summarizing the answer comes after descriptive text.
+            profile = None
+            for name in ("high performance", "performance", "power saver", "battery saver", "balanced", "battery"):
+                last = n.rfind(name)
+                if last >= 0:
+                    if profile is None or last > profile[1]:
+                        found = "performance" if ("performance" in name) else "battery"
+                        profile = (found, last)
+            if profile:
+                return profile[0]
             return n
 
         # Try detection up to 5 times before failing.

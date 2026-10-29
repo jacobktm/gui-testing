@@ -102,7 +102,6 @@ GRACEFUL_REBOOT_CMDS = [
 RELIABLE_REBOOT_CMDS = [
     ["sudo", "-n", "reboot", "-f"],
     ["sudo", "-n", "systemctl", "reboot"],
-    ["systemctl", "reboot", "--force", "--force"],
     ["systemctl", "reboot", "--force"],
     ["reboot", "-f"],
     ["reboot"],

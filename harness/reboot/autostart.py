@@ -184,7 +184,7 @@ def _systemctl_user(args: list[str], username: str | None = None) -> subprocess.
                 pass
         return subprocess.run(
             ["systemctl", "--user", *args],
-            capture_output=True, text=True, timeout=20, env=env,
+            capture_output=True, text=True, timeout=5, env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -285,7 +285,7 @@ def remove_resume_unit(*, username: str | None = None) -> bool:
         try:
             subprocess.run(
                 ["systemctl", "--user", *args],
-                capture_output=True, text=True, timeout=20, env=env,
+                capture_output=True, text=True, timeout=3, env=env,
             )
         except (OSError, subprocess.SubprocessError):
             pass
@@ -312,7 +312,7 @@ def remove_resume_unit(*, username: str | None = None) -> bool:
     try:
         subprocess.run(
             ["systemctl", "--user", "daemon-reload"],
-            capture_output=True, text=True, timeout=20, env=env,
+            capture_output=True, text=True, timeout=5, env=env,
         )
     except (OSError, subprocess.SubprocessError):
         pass

@@ -159,6 +159,8 @@ def finish_reboot(*, username: str | None = None) -> bool:
             if remove_resume_unit(username=u):
                 unit_removed = True
                 print(f"[finish_reboot] removed resume unit for {u}", file=sys.stderr, flush=True)
+            else:
+                print(f"[finish_reboot] remove_resume_unit({u}) returned False", file=sys.stderr, flush=True)
         except Exception as e:
             print(f"[finish_reboot] remove_resume_unit({u}) exception: {e}", file=sys.stderr, flush=True)
 

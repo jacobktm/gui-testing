@@ -153,14 +153,27 @@ def finish_reboot(*, username: str | None = None) -> bool:
         pass
 
     unit_removed = False
+    # Remove unit files directly (skip systemctl which can hang).
     for u in users_to_try:
         print(f"[finish_reboot] removing resume unit for {u}", file=sys.stderr, flush=True)
         try:
-            if remove_resume_unit(username=u):
+            from .autostart import unit_path_for
+            up = unit_path_for(u)
+            try:
+                up.unlink()
                 unit_removed = True
-                print(f"[finish_reboot] removed resume unit for {u}", file=sys.stderr, flush=True)
-            else:
-                print(f"[finish_reboot] remove_resume_unit({u}) returned False", file=sys.stderr, flush=True)
+                print(f"[finish_reboot] removed unit file: {up}", file=sys.stderr, flush=True)
+            except FileNotFoundError:
+                unit_removed = True
+            except OSError:
+                try:
+                    subprocess.run(
+                        ["sudo", "-n", "rm", "-f", str(up)],
+                        capture_output=True, text=True, timeout=5,
+                    )
+                    unit_removed = True
+                except Exception:
+                    pass
         except Exception as e:
             print(f"[finish_reboot] remove_resume_unit({u}) exception: {e}", file=sys.stderr, flush=True)
 

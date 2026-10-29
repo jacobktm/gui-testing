@@ -280,15 +280,9 @@ def remove_resume_unit(*, username: str | None = None) -> bool:
     except KeyError:
         pass
 
-    # Stop and disable.
-    for args in (["stop", UNIT_NAME], ["disable", UNIT_NAME]):
-        try:
-            subprocess.run(
-                ["systemctl", "--user", *args],
-                capture_output=True, text=True, timeout=3, env=env,
-            )
-        except (OSError, subprocess.SubprocessError):
-            pass
+    # Stop and disable (skip systemctl --user which can hang).
+    # Just remove the unit files directly.
+    pass
 
     # Remove unit files.
     removed_any = False
@@ -308,13 +302,7 @@ def remove_resume_unit(*, username: str | None = None) -> bool:
             except (OSError, subprocess.SubprocessError):
                 pass
 
-    # Daemon reload.
-    try:
-        subprocess.run(
-            ["systemctl", "--user", "daemon-reload"],
-            capture_output=True, text=True, timeout=5, env=env,
-        )
-    except (OSError, subprocess.SubprocessError):
-        pass
+    # Daemon reload (skip - can hang, not critical for cleanup).
+    pass
 
     return removed_any

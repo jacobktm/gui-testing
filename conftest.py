@@ -387,12 +387,19 @@ def pytest_runtest_makereport(item, call):
                 record_completed(run_dir, item.nodeid, outcome=report.outcome)
             except Exception:
                 pass
-        # Update manifest entries created during this test.
+        # Update manifest entries created during this test, plus any
+        # pre-existing entries with the same item id.
         try:
             run = getattr(item.config, "_gui_run", None)
             if run is not None:
                 before = getattr(item, "_manifest_count_before", 0)
+                # Update new entries.
                 for entry in run.manifest.tests[before:]:
+                    if entry.get("status", "unknown") == "unknown":
+                        entry["status"] = report.outcome
+                # Also update any pre-existing entries that are still unknown
+                # (e.g., from a previous invocation before reboot).
+                for entry in run.manifest.tests[:before]:
                     if entry.get("status", "unknown") == "unknown":
                         entry["status"] = report.outcome
                 run._save()

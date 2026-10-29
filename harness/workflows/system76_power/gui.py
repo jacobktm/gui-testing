@@ -588,14 +588,20 @@ class System76PowerGUIWorkflow(Workflow):
             except Exception as exc:
                 print(f"  [detect_power_profile] attempt {attempt} failed: {exc}", flush=True)
                 value, result = None, None
-            # Click center to dismiss screenshot notification, then wait.
+            # Click center to dismiss screenshot notification/menus, then wait.
             try:
-                self.driver.go_to((0.5, 0.5))
-                self.driver.click_at((0.5, 0.5))
+                self.dismiss_menus()
             except Exception:
-                pass
+                try:
+                    self.driver.go_to((0.5, 0.5))
+                    self.driver.click_at((0.5, 0.5))
+                    import time as _t
+                    _t.sleep(1)
+                    self.driver.click_at((0.5, 0.5))
+                except Exception:
+                    pass
             import time as _t
-            _t.sleep(5)
+            _t.sleep(3)
             if value is not None:
                 normalized = _normalize(value)
                 recognized = normalized in ("performance", "balanced", "battery")
@@ -611,8 +617,8 @@ class System76PowerGUIWorkflow(Workflow):
                 self.open_power_settings(os_id)
             except Exception:
                 pass
-            import time as _t2
-            _t2.sleep(3)
+            import time as _t2b
+            _t2b.sleep(3)
 
         if self.artifacts is not None and item_id:
             try:
@@ -740,14 +746,20 @@ class System76PowerGUIWorkflow(Workflow):
                 except Exception as exc:
                     print(f"  [detect_graphics_mode] attempt {attempt} failed: {exc}", flush=True)
                     value, result = None, None
-                # Click center to dismiss screenshot notification, then wait.
+                # Click center to dismiss screenshot notification/menus, then wait.
                 try:
-                    self.driver.go_to((0.5, 0.5))
-                    self.driver.click_at((0.5, 0.5))
+                    self.dismiss_menus()
                 except Exception:
-                    pass
+                    try:
+                        self.driver.go_to((0.5, 0.5))
+                        self.driver.click_at((0.5, 0.5))
+                        import time as _t
+                        _t.sleep(1)
+                        self.driver.click_at((0.5, 0.5))
+                    except Exception:
+                        pass
                 import time as _t2
-                _t2.sleep(5)
+                _t2.sleep(3)
                 # If detected value matches a known (or target) mode, accept it.
                 if value:
                     match = value.lower() == target.lower() if target is not None else value.lower() in {e.lower() for e in expected}

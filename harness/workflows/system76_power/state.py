@@ -76,12 +76,16 @@ def restore_original_graphics_mode(handler: Any) -> bool:
     """
     import subprocess
     try:
+        try:
+            from harness.cleanup import run_all as _run_all_cleanup
+            _run_all_cleanup()
+        except Exception:
+            pass
         original = (_read_state(ORIGINAL_MODE_PATH) or {}).get("mode")
         if original is None:
             return False
         current = None
         try:
-            # Kill any stuck system76-power processes first
             subprocess.run(["pkill", "-9", "-f", "system76-power"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(["sudo", "-n", "systemctl", "restart", "com.system76.PowerDaemon.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
             current = handler.get_graphics_mode()

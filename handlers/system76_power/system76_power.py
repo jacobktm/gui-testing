@@ -264,6 +264,19 @@ class System76Power:
     def set_graphics_power(self, state=None):
         if state not in ('on', 'off'):
             return
+        try:
+            from harness.cleanup import register_cleanup
+            if not getattr(self, '_graphics_power_cleanup_registered', False):
+                def _cleanup_gp():
+                    try:
+                        subprocess.run(['pkill', '-9', '-f', 'system76-power'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        subprocess.run(['sudo', '-n', 'systemctl', 'restart', 'com.system76.PowerDaemon.service'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+                    except Exception:
+                        pass
+                register_cleanup(_cleanup_gp)
+                self._graphics_power_cleanup_registered = True
+        except Exception:
+            pass
         result = self._run(['system76-power', 'graphics', 'power', state], check=False, timeout=60.0)
         if result['returncode'] == 0:
             self._log({'type': 'graphics_power_set', 'state': state})

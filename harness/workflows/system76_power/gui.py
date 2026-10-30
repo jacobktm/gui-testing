@@ -549,12 +549,38 @@ class System76PowerGUIWorkflow(Workflow):
         except Exception:
             pass
         time.sleep(3)
-        # Open power settings fresh.
-        try:
-            self.open_power_settings(os_id)
-        except Exception:
-            pass
-        time.sleep(12)
+        # Open power settings fresh - be aggressive on Ubuntu
+        if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+            try:
+                import sys
+                from ...gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
+                from ...gui import Coords
+                src = COORD_SOURCE.get(os_id, (1920, 1200))
+                dst = get_display_resolution()
+                print(f"[detect_power_profile] ubuntu explicit open: src={src} dst={dst}", file=sys.stderr, flush=True)
+                c1 = adjust_coords(Coords.OPEN, src, dst)
+                print(f"[detect_power_profile] clicking OPEN at {c1}", file=sys.stderr, flush=True)
+                self.driver.click_at(c1)
+                time.sleep(4)
+                extra = Coords.UBUNTU_26.get("extra_click")
+                if extra:
+                    c2 = adjust_coords(extra, src, dst)
+                    print(f"[detect_power_profile] clicking extra at {c2}", file=sys.stderr, flush=True)
+                    self.driver.click_at(c2)
+                time.sleep(10)
+            except Exception as e:
+                print(f"[detect_power_profile] ubuntu explicit open failed: {e}", file=sys.stderr, flush=True)
+                try:
+                    self.open_power_settings(os_id)
+                except Exception:
+                    pass
+                time.sleep(12)
+        else:
+            try:
+                self.open_power_settings(os_id)
+            except Exception:
+                pass
+            time.sleep(12)
 
         def _normalize(raw: str) -> str:
             """Map LLM responses to the three CLI profile names.

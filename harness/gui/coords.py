@@ -6,7 +6,7 @@ __all__ = ["Coords"]
 class Coords:
     """Predictable normalized coordinates for known layouts."""
 
-    OPEN = (0.975, 0.010)
+    OPEN = (0.955, 0.014)
     POP22_EXTRA = (0.955, 0.20)
 
     POP22_PROFILES = {
@@ -221,9 +221,16 @@ def adjust_coords(
     def _is_1610(ar):
         return abs(ar[0]/ar[1] - 16/10) < 0.001 or abs(ar[0]/ar[1] - 8/5) < 0.001
 
-    # Common case: 16:9 <-> 16:10 - vertical space differs, horizontal positions often fixed in UI
+    # Common case: 16:9 <-> 16:10
     if (_is_169(src_ar) and _is_1610(dst_ar)) or (_is_1610(src_ar) and _is_169(dst_ar)):
         py = y * src_h
+        # UI elements anchored to right edge need offset-from-right to remain stable
+        if x > 0.85:  # right-anchored (tray icons, menus on right)
+            offset_right_norm = 1 - x
+            # Keep pixel offset from right edge constant
+            pixel_offset = offset_right_norm * src_w
+            nx = 1 - (pixel_offset / dst_w)
+            return (nx, py / dst_h)
         return (x, py / dst_h)
 
     # Ultrawide or other aspect ratios - both axes need transformation

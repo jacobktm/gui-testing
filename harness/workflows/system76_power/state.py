@@ -79,15 +79,20 @@ def restore_original_graphics_mode(handler: Any) -> bool:
         original = (_read_state(ORIGINAL_MODE_PATH) or {}).get("mode")
         if original is None:
             return False
-        current = handler.get_graphics_mode()
+        current = None
+        try:
+            # Kill any stuck system76-power processes first
+            subprocess.run(["pkill", "-9", "-f", "system76-power"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["sudo", "-n", "systemctl", "restart", "com.system76.PowerDaemon.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            current = handler.get_graphics_mode()
+        except Exception as e:
+            print(f"[restore_graphics] get mode failed: {e}", flush=True)
+            current = None
         if current == original:
             ORIGINAL_MODE_PATH.unlink(missing_ok=True)
             return False
         try:
             r = subprocess.run(["system76-power", "graphics", original], check=False, timeout=15, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if r.returncode in (0, None):
-                ORIGINAL_MODE_PATH.unlink(missing_ok=True)
-                return True
             ORIGINAL_MODE_PATH.unlink(missing_ok=True)
             return True
         except subprocess.TimeoutExpired:

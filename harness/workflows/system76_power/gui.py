@@ -543,18 +543,18 @@ class System76PowerGUIWorkflow(Workflow):
         except Exception:
             pass
         import time
-        time.sleep(1)
+        time.sleep(2)
         try:
             self.driver.click_at((0.5, 0.5))
         except Exception:
             pass
-        time.sleep(2)
+        time.sleep(3)
         # Open power settings fresh.
         try:
             self.open_power_settings(os_id)
         except Exception:
             pass
-        time.sleep(10)
+        time.sleep(12)
 
         def _normalize(raw: str) -> str:
             """Map LLM responses to the three CLI profile names.

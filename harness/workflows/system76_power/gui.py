@@ -33,21 +33,30 @@ class System76PowerGUIWorkflow(Workflow):
         from ...gui.coords import get_display_resolution
         _dst = get_display_resolution()
         try:
-            import sys
             print(f"[open_power_settings] os_id={os_id} src={_src} dst={_dst} OPEN={adjust_coords(Coords.OPEN, _src, _dst)}", file=sys.stderr, flush=True)
             # Click the system tray / battery icon.
-            self.driver.click_at(adjust_coords(Coords.OPEN, _src, _dst))
+            c = adjust_coords(Coords.OPEN, _src, _dst)
+            print(f"[open_power_settings] clicking OPEN at {c}", file=sys.stderr, flush=True)
+            self.driver.click_at(c)
             if os_id == "pop-22.04":
                 time.sleep(2)
                 extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
-                self.driver.click_at(adjust_coords(extra, _src, _dst))
+                ce = adjust_coords(extra, _src, _dst)
+                print(f"[open_power_settings] clicking POP22_EXTRA at {ce}", file=sys.stderr, flush=True)
+                self.driver.click_at(ce)
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                time.sleep(2)
+                time.sleep(3)
                 extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
                 if extra:
-                    self.driver.click_at(adjust_coords(extra, _src, _dst))
-            # Pop 24 (COSMIC): single click on battery icon opens settings.
-            time.sleep(3)
+                    ce = adjust_coords(extra, _src, _dst)
+                    print(f"[open_power_settings] clicking UBUNTU_EXTRA at {ce}", file=sys.stderr, flush=True)
+                    self.driver.click_at(ce)
+                else:
+                    print(f"[open_power_settings] no ubuntu extra click found", file=sys.stderr, flush=True)
+            else:
+                # Pop 24 (COSMIC): single click on battery icon opens settings.
+                pass
+            time.sleep(5)
         except Exception as exc:
             print(f"[open_power_settings] FAILED: {exc}", file=sys.stderr, flush=True)
             return WorkflowResult(

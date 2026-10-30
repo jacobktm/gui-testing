@@ -277,8 +277,17 @@ class GuiDriver:
                 )
                 print(f"[capture_and_detect] crop OK: {crop.path}", file=sys.stderr, flush=True)
             except Exception as e:
-                print(f"[capture_and_detect] crop FAILED: {e}", file=sys.stderr, flush=True)
-                continue
+                print(f"[capture_and_detect] crop FAILED: {e}, using full screenshot", file=sys.stderr, flush=True)
+                # Use full screenshot if cropping fails
+                import shutil
+                try:
+                    shutil.copy2(str(screenshot.path), str(active_path))
+                    class _FakeCrop:
+                        def __init__(self, path):
+                            self.path = path
+                    crop = _FakeCrop(str(active_path))
+                except Exception:
+                    continue
 
             # Try reprompting with the same screenshot if we get bad model output
             response = None

@@ -13,10 +13,25 @@ from .base import Workflow, WorkflowResult
 from .ui_workflow import UIWorkflow
 from ..gui import Coords
 from ..gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
+from ..llm.prompts import SETTINGS_SELECTION, SIMPLE_SELECTION, SINGLE_WORD_CHOICE
 
-GRAPHICS_MODE_PROMPT_POP22 = "Look at this screenshot of Pop!_OS 22.04 graphics settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
-POWER_PROFILE_PROMPT_UBUNTU = "Look at this screenshot of power/power mode settings. Which power mode is currently selected or highlighted? Answer with just one word: 'performance', 'balanced', or 'battery'. If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'."
-POWER_PROFILE_PROMPT_DEFAULT = "Which power profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
+GRAPHICS_MODE_PROMPT_POP22 = SINGLE_WORD_CHOICE.render(
+    context="Pop!_OS 22.04 graphics settings",
+    item="graphics mode",
+    choices="'integrated', 'hybrid', 'compute', or 'nvidia'",
+)
+POWER_PROFILE_PROMPT_UBUNTU = SETTINGS_SELECTION.render(
+    app_name="power/power mode",
+    settings_section="settings",
+    item_type="power mode",
+    choices="'performance', 'balanced', or 'battery'",
+    extra_instructions="If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'.",
+)
+POWER_PROFILE_PROMPT_DEFAULT = SIMPLE_SELECTION.render(
+    item="power profile",
+    choices="'performance', 'battery', or 'balanced'",
+    extra_instructions="Power Saver is the same as 'battery'.",
+)
 
 
 class ProfileTransitionWorkflow(Workflow):

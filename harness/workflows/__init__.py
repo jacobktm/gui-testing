@@ -5,6 +5,7 @@ from .system76_power import (
     System76PowerWorkflow,
 )
 from .ui_workflow import UIWorkflow
+from .transitions import ProfileTransitionWorkflow, GraphicsTransitionWorkflow
 
 __all__ = [
     "System76PowerCLIWorkflow",
@@ -13,4 +14,6 @@ __all__ = [
     "Workflow",
     "WorkflowResult",
     "UIWorkflow",
+    "ProfileTransitionWorkflow",
+    "GraphicsTransitionWorkflow",
 ]

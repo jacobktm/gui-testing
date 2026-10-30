@@ -673,11 +673,34 @@ class System76PowerGUIWorkflow(Workflow):
                     break
             # Otherwise retry after re-opening settings.
             try:
-                self.open_power_settings(os_id)
+                if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+                    try:
+                        import sys
+                        from ...gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
+                        from ...gui import Coords
+                        src = COORD_SOURCE.get(os_id, (1920, 1200))
+                        dst = get_display_resolution()
+                        print(f"[detect_power_profile] ubuntu retry open", file=sys.stderr, flush=True)
+                        c1 = adjust_coords(Coords.OPEN, src, dst)
+                        self.driver.click_at(c1)
+                        time.sleep(4)
+                        extra = Coords.UBUNTU_26.get("extra_click")
+                        if extra:
+                            c2 = adjust_coords(extra, src, dst)
+                            self.driver.click_at(c2)
+                        time.sleep(10)
+                    except Exception:
+                        self.open_power_settings(os_id)
+                        import time as _t2b
+                        _t2b.sleep(12)
+                else:
+                    self.open_power_settings(os_id)
+                    import time as _t2b
+                    _t2b.sleep(8)
             except Exception:
                 pass
             import time as _t2b
-            _t2b.sleep(8)
+            _t2b.sleep(3)
 
         if self.artifacts is not None and item_id:
             try:

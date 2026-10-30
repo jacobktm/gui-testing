@@ -125,7 +125,7 @@ class ReportWriter:
         try:
             run_dir = Path(run.run_dir)
             archive_path = run_dir.with_name(run_dir.name + ".tar.gz")
-            with tarfile.open(archive_path, "w:gz") as tf:
+            with tarfile.open(archive_path, "w:gz", compresslevel=9) as tf:
                 tf.add(run_dir, arcname=run_dir.name)
             print(f"Archived run to: {archive_path}")
             return archive_path

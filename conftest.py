@@ -272,17 +272,6 @@ def pytest_collection_finish(session):
 def pytest_sessionfinish(session, exitstatus):
     config = session.config
     _finalize_run(config)
-    # Restore original graphics mode if it was changed by tests.
-    try:
-        from handlers.system76_power import System76Power
-        from harness.workflows.system76_power.state import restore_original_graphics_mode
-        h = System76Power()
-        if restore_original_graphics_mode(h):
-            from harness.reboot.system import reboot, wait_for_boot
-            reboot(None)
-            wait_for_boot(None)
-    except Exception:
-        pass
     # Restore brightness to max (tests may leave it at min).
     try:
         from harness.brightness import BrightnessHandler
@@ -317,6 +306,18 @@ def pytest_sessionfinish(session, exitstatus):
         import traceback
         traceback.print_exc()
     config._gui_reboot_finished = True
+
+    # Restore original graphics mode last thing before final reboot.
+    try:
+        from handlers.system76_power import System76Power
+        from harness.workflows.system76_power.state import restore_original_graphics_mode
+        h = System76Power()
+        if restore_original_graphics_mode(h):
+            from harness.reboot.system import reboot, wait_for_boot
+            reboot(None)
+            wait_for_boot(None)
+    except Exception:
+        pass
 
     # Final reboot after cleanup (signals test completion to the user).
     # Try multiple methods since sudoers may already be gone.

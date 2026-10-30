@@ -4,6 +4,7 @@ from .system76_power import (
     System76PowerGUIWorkflow,
     System76PowerWorkflow,
 )
+from .ui_workflow import UIWorkflow
 
 __all__ = [
     "System76PowerCLIWorkflow",
@@ -11,4 +12,5 @@ __all__ = [
     "System76PowerWorkflow",
     "Workflow",
     "WorkflowResult",
+    "UIWorkflow",
 ]

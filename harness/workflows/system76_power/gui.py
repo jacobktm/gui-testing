@@ -725,15 +725,13 @@ class System76PowerGUIWorkflow(Workflow):
         otherwise a recognized mode (even the wrong one) ends the loop.
         """
         expected = {"integrated", "hybrid", "compute", "nvidia"}
-        if os_id == "pop-22.04":
+        if os_id == "pop-22.04" or os_id.startswith("pop-22"):
             prompt = "Look at this screenshot of Pop!_OS 22.04 graphics settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
         elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-            expected = {"integrated", "hybrid", "compute", "nvidia", "performance"}
-            prompt = "Look at this screenshot of Ubuntu power settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
+            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
         else:
-            # Pop!_OS 24.04 / COSMIC
-            expected = {"integrated", "hybrid", "compute", "nvidia"}
-            prompt = "Look at this screenshot of the power settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
+            # Pop!_OS 24.04 / COSMIC - no switchable graphics in GUI extension
+            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
 
         try:
             # Dismiss any open panels first by clicking center.

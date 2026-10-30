@@ -520,10 +520,9 @@ class System76PowerGUIWorkflow(Workflow):
         """
         if os_id == "ubuntu-26.04":
             expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
-            prompt = "Which performance profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
         else:
             expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
-            prompt = "Which performance profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
+        prompt = "Which performance profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
 
         # Dismiss any open panels first by clicking center (twice).
         try:
@@ -547,30 +546,51 @@ class System76PowerGUIWorkflow(Workflow):
         def _normalize(raw: str) -> str:
             """Map LLM responses to the three CLI profile names.
 
-            Prefers the model's conclusion (the last explicit mention or a
-            "selected profile is X" statement) over an early keyword hit from
-            surrounding text like the settings header ("Power & Battery").
+            Prefer explicit conclusion, otherwise use the LAST mention.
             """
+            import re
+
             n = (raw or "").lower().strip()
             if not n:
                 return ""
+
             # Explicit conclusion statement wins.
-            import re
             m = re.search(r"selected(?: performance)? profile is\s*[:*\"]?\s*(performance|balanced|battery)", n)
             if m:
                 return m.group(1)
-            # Otherwise use the LAST occurrence of any profile word — the
-            # sentence summarizing the answer comes after descriptive text.
-            profile = None
-            for name in ("high performance", "performance", "power saver", "battery saver", "balanced", "battery"):
-                last = n.rfind(name)
-                if last >= 0:
-                    if profile is None or last > profile[1]:
-                        found = "performance" if ("performance" in name) else "battery"
-                        profile = (found, last)
-            if profile:
-                return profile[0]
-            return n
+
+            # Map synonyms to canonical names.
+            def _canonical(s: str) -> str:
+                if s in ("high performance", "performance"):
+                    return "performance"
+                if s in ("power saver", "battery saver", "battery", "powersaver", "batterysaver"):
+                    return "battery"
+                if s == "balanced":
+                    return "balanced"
+                return s
+
+            # Find all profile mentions.
+            patterns = [
+                r"high performance",
+                r"performance",
+                r"power saver",
+                r"battery saver",
+                r"batterysaver",
+                r"powersaver",
+                r"balanced",
+                r"battery",
+            ]
+            matches = []
+            for p in patterns:
+                for m in re.finditer(p, n):
+                    matches.append((_canonical(m.group(0)), m.start()))
+
+            if not matches:
+                return ""
+
+            # Use the LAST occurrence - conclusion is usually at the end
+            last_canon, _ = matches[-1]
+            return last_canon
 
         # Try detection up to 5 times before failing.
         value = None

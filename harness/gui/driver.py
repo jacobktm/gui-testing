@@ -244,93 +244,132 @@ class GuiDriver:
         step: str = "detect",
         out_dir: Path | str | None = None,
         active_index: int | None = None,
+        max_screenshot_attempts: int = 5,
+        max_reprompts_same_image: int = 3,
     ) -> tuple[str, Any]:
         out_dir = Path(out_dir) if out_dir is not None else Path("/tmp/opencode/gui")
         out_dir.mkdir(parents=True, exist_ok=True)
 
         import time as _t
-        _ts = int(_t.time() * 1000)
-        shot_path = out_dir / f"screenshot_{phase}_{_ts}.png"
         import sys
-        print(f"[capture_and_detect] capturing to {shot_path}", file=sys.stderr, flush=True)
-        try:
-            screenshot = capture(shot_path)
-            print(f"[capture_and_detect] capture OK: {screenshot.path} {screenshot.width}x{screenshot.height}", file=sys.stderr, flush=True)
-        except Exception as e:
-            print(f"[capture_and_detect] capture FAILED: {e}", file=sys.stderr, flush=True)
-            raise
+        from ..detection import parse_detection, DetectionParseError
 
-        active_path = out_dir / f"active_{phase}_{_ts}.png"
-        try:
-            crop = crop_active_display(
-                screenshot,
-                active_path,
-                active_index=active_index,
-            )
-            print(f"[capture_and_detect] crop OK: {crop.path}", file=sys.stderr, flush=True)
-        except Exception as e:
-            print(f"[capture_and_detect] crop FAILED: {e}", file=sys.stderr, flush=True)
-            raise
+        last_response = None
+        last_result = None
 
-        # Send active display to model
-        response = None
-        print(f"[capture_and_detect] calling LLM with model={self.ollama.model}", file=sys.stderr, flush=True)
-        try:
-            if self.ollama.client and self.ollama.model:
-                response = self.ollama.send_message(prompt, [str(crop.path)])
-                print(f"[capture_and_detect] LLM response: {response}", file=sys.stderr, flush=True)
-            else:
-                print(f"[capture_and_detect] Ollama not connected: client={self.ollama.client} model={self.ollama.model}", file=sys.stderr, flush=True)
-        except Exception as e:
-            print(f"[capture_and_detect] LLM FAILED: {e}", file=sys.stderr, flush=True)
+        for shot_attempt in range(max_screenshot_attempts):
+            _ts = int(_t.time() * 1000)
+            shot_path = out_dir / f"screenshot_{phase}_{_ts}.png"
+            print(f"[capture_and_detect] capturing to {shot_path} (shot_attempt={shot_attempt})", file=sys.stderr, flush=True)
+            try:
+                screenshot = capture(shot_path)
+                print(f"[capture_and_detect] capture OK: {screenshot.path} {screenshot.width}x{screenshot.height}", file=sys.stderr, flush=True)
+            except Exception as e:
+                print(f"[capture_and_detect] capture FAILED: {e}", file=sys.stderr, flush=True)
+                continue
+
+            active_path = out_dir / f"active_{phase}_{_ts}.png"
+            try:
+                crop = crop_active_display(
+                    screenshot,
+                    active_path,
+                    active_index=active_index,
+                )
+                print(f"[capture_and_detect] crop OK: {crop.path}", file=sys.stderr, flush=True)
+            except Exception as e:
+                print(f"[capture_and_detect] crop FAILED: {e}", file=sys.stderr, flush=True)
+                continue
+
+            # Try reprompting with the same screenshot if we get bad model output
             response = None
+            result = None
+            for rep in range(max_reprompts_same_image):
+                print(f"[capture_and_detect] calling LLM with model={self.ollama.model} (reprompt={rep}, shot_attempt={shot_attempt})", file=sys.stderr, flush=True)
+                try:
+                    if self.ollama.client and self.ollama.model:
+                        response = self.ollama.send_message(prompt, [str(crop.path)])
+                        print(f"[capture_and_detect] LLM response: {response}", file=sys.stderr, flush=True)
+                    else:
+                        print(f"[capture_and_detect] Ollama not connected: client={self.ollama.client} model={self.ollama.model}", file=sys.stderr, flush=True)
+                        response = None
+                except Exception as e:
+                    print(f"[capture_and_detect] LLM FAILED: {e}", file=sys.stderr, flush=True)
+                    response = None
 
-        result = parse_detection(response, expected=expected)
+                # Check for bad model output (empty/unparseable)
+                if not response or (isinstance(response, str) and not response.strip()):
+                    print(f"[capture_and_detect] bad model output (empty), reprompting same screenshot...", file=sys.stderr, flush=True)
+                    _t.sleep(1)
+                    continue
 
-        # Click center to dismiss screenshot notification, then wait.
-        try:
-            go_to = self.go_to
-            click_at = self.click_at
-            go_to((0.5, 0.5))
-            click_at((0.5, 0.5))
-        except Exception:
-            pass
-        import time as _t
-        _t.sleep(5)
+                try:
+                    result = parse_detection(response, expected=expected)
+                    last_response = response
+                    last_result = result
+                    break  # got parseable response from model
+                except DetectionParseError as e:
+                    print(f"[capture_and_detect] bad model output (parse failed: {e}), reprompting same screenshot...", file=sys.stderr, flush=True)
+                    last_response = response
+                    _t.sleep(1)
+                    continue
+                except Exception as e:
+                    print(f"[capture_and_detect] bad model output (error: {e}), reprompting same screenshot...", file=sys.stderr, flush=True)
+                    last_response = response
+                    _t.sleep(1)
+                    continue
 
-        if self.artifacts is not None and item_id:
+            if result is None:
+                print(f"[capture_and_detect] exhausted reprompts on same screenshot, taking new screenshot...", file=sys.stderr, flush=True)
+                # Click center to dismiss before next attempt
+                try:
+                    self.go_to((0.5, 0.5))
+                    self.click_at((0.5, 0.5))
+                except Exception:
+                    pass
+                _t.sleep(2)
+                continue
+
+            # Got a parseable result from model - click center to dismiss screenshot notification
             try:
-                art = self.artifacts.save_screenshot(
-                    item_id, phase, screenshot.path, step=f"{step}_full"
-                )
-                import sys
-                print(f"[capture_and_detect] saved full screenshot: {art.path}", file=sys.stderr, flush=True)
-            except Exception as e:
-                import sys
-                print(f"[capture_and_detect] save_screenshot full FAILED: {e}", file=sys.stderr, flush=True)
-            try:
-                art = self.artifacts.save_screenshot(
-                    item_id, phase, crop.path, step=f"{step}_active"
-                )
-                import sys
-                print(f"[capture_and_detect] saved active screenshot: {art.path}", file=sys.stderr, flush=True)
-            except Exception as e:
-                import sys
-                print(f"[capture_and_detect] save_screenshot active FAILED: {e}", file=sys.stderr, flush=True)
-            try:
-                self.artifacts.save_detection(
-                    item_id,
-                    phase,
-                    {
-                        "value": result.value,
-                        "normalized": result.normalized,
-                        "prompt": prompt,
-                        "response": response,
-                    },
-                    step=step,
-                )
-            except Exception as e:
-                import sys
-                print(f"[capture_and_detect] save_detection failed: {e}", file=sys.stderr, flush=True)
+                self.go_to((0.5, 0.5))
+                self.click_at((0.5, 0.5))
+            except Exception:
+                pass
+            _t.sleep(5)
 
-        return result.value, result
+            if self.artifacts is not None and item_id:
+                try:
+                    art = self.artifacts.save_screenshot(
+                        item_id, phase, screenshot.path, step=f"{step}_full"
+                    )
+                    print(f"[capture_and_detect] saved full screenshot: {art.path}", file=sys.stderr, flush=True)
+                except Exception as e:
+                    print(f"[capture_and_detect] save_screenshot full FAILED: {e}", file=sys.stderr, flush=True)
+                try:
+                    art = self.artifacts.save_screenshot(
+                        item_id, phase, crop.path, step=f"{step}_active"
+                    )
+                    print(f"[capture_and_detect] saved active screenshot: {art.path}", file=sys.stderr, flush=True)
+                except Exception as e:
+                    print(f"[capture_and_detect] save_screenshot active FAILED: {e}", file=sys.stderr, flush=True)
+                try:
+                    self.artifacts.save_detection(
+                        item_id,
+                        phase,
+                        {
+                            "value": result.value,
+                            "normalized": result.normalized,
+                            "prompt": prompt,
+                            "response": response,
+                        },
+                        step=step,
+                    )
+                except Exception as e:
+                    print(f"[capture_and_detect] save_detection failed: {e}", file=sys.stderr, flush=True)
+
+            return result.value, result
+
+        # If we get here, all attempts failed
+        if last_result is not None:
+            return last_result.value, last_result
+        raise DetectionParseError("failed to get valid detection after all attempts")

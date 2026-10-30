@@ -39,8 +39,11 @@ class ProfileTransitionWorkflow(Workflow):
                 clicks.append(adjust_coords(extra, src, dst))
         return clicks
 
-    def validate_profile(self, target: str, os_id: str, item_id: str = "profile.validate") -> WorkflowResult:
+    def validate_profile(self, target: str, os_id: str = None, item_id: str = "profile.validate") -> WorkflowResult:
         """Validate power profile via UI - clicks to open, takes screenshot, queries LLM."""
+        if os_id is None:
+            import os
+            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
         clicks = self._get_open_clicks(os_id)
         
         if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
@@ -66,15 +69,10 @@ class ProfileTransitionWorkflow(Workflow):
         
         value = (res.data or {}).get("value", "").lower()
         # Normalize
-        if value in ("high performance", "power saver", "battery saver", "batterysaver", "powersaver"):
-            if "performance" in value and "high" in value:
-                value = "performance"
-            elif "power" in value or "battery" in value:
-                value = "battery"
-            else:
-                value = value
-        elif value == "power saver":
+        if value == "power saver" or value == "battery saver" or value == "batterysaver" or value == "powersaver":
             value = "battery"
+        elif value == "high performance":
+            value = "performance"
         
         verified = (value == target.lower())
         return WorkflowResult(
@@ -84,21 +82,35 @@ class ProfileTransitionWorkflow(Workflow):
             data={"value": value, "target": target, "verified": verified},
         )
 
+    def transition_to(self, target: str, os_id: str = None, via: str = "gui", item_id: str = None) -> WorkflowResult:
+        """Single workflow to transition to target profile via GUI or CLI."""
+        if os_id is None:
+            import os
+            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        if item_id is None:
+            item_id = f"{via}.power_profile_transition.to_{target}"
+        
+        from handlers.system76_power import System76Power
+        handler = System76Power(artifacts=self.artifacts)
+        
+        if via == "cli":
+            handler.switch_perf_profile(target)
+            import time
+            time.sleep(25)
+            return self.validate_profile(target, os_id=os_id, item_id=f"{item_id}.validate")
+        else:
+            current = handler.get_perf_profile()
+            res = self.gui_wf.transition_perf_profile(current or "performance", target, os_id=os_id, item_id=item_id)
+            return res
+
     def run_all_gui(self, os_id: str = "pop-22.04", item_id: str = "gui.power_profile_transitions_all") -> WorkflowResult:
         """Run all GUI profile transitions in order."""
-        order = [
-            ("performance", "balanced"),
-            ("balanced", "battery"),
-            ("battery", "performance"),
-            ("performance", "battery"),
-            ("battery", "balanced"),
-            ("balanced", "performance"),
-        ]
+        order = ["balanced", "battery", "performance", "battery", "balanced", "performance"]
         results = []
         all_ok = True
-        for src, tgt in order:
-            res = self.gui_wf.transition_perf_profile(src, tgt, os_id=os_id, item_id=f"{item_id}.{src}_to_{tgt}")
-            results.append({"from": src, "to": tgt, "success": res.success, "data": res.data})
+        for tgt in order:
+            res = self.transition_to(tgt, os_id=os_id, via="gui", item_id=f"{item_id}.to_{tgt}")
+            results.append({"to": tgt, "success": res.success, "data": res.data})
             if not res.success:
                 all_ok = False
         return WorkflowResult(
@@ -110,27 +122,23 @@ class ProfileTransitionWorkflow(Workflow):
 
     def run_all_cli_validate(self, os_id: str = None, item_id: str = "cli.profile_reflected_all") -> WorkflowResult:
         """Run all CLI profile changes and validate reflection via UI workflow."""
+        if os_id is None:
+            import os
+            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
         from handlers.system76_power import System76Power
         handler = System76Power()
-        # Ensure performance
         handler.switch_perf_profile("performance")
+        import time
         time.sleep(20)
         
-        order = [
-            ("performance", "balanced"),
-            ("balanced", "battery"),
-            ("battery", "performance"),
-            ("performance", "battery"),
-            ("battery", "balanced"),
-            ("balanced", "performance"),
-        ]
+        order = ["balanced", "battery", "performance", "battery", "balanced", "performance"]
         results = []
         all_ok = True
-        for src, tgt in order:
+        for tgt in order:
             handler.switch_perf_profile(tgt)
             time.sleep(25)
-            val = self.validate_profile(tgt, os_id or "pop-24.04", item_id=f"{item_id}.{src}_to_{tgt}")
-            results.append({"from": src, "to": tgt, "validated": val.success, "data": val.data})
+            val = self.validate_profile(tgt, os_id=os_id, item_id=f"{item_id}.to_{tgt}")
+            results.append({"to": tgt, "validated": val.success, "data": val.data})
             if not val.success:
                 all_ok = False
         return WorkflowResult(
@@ -193,14 +201,23 @@ class GraphicsTransitionWorkflow(Workflow):
             data={"value": value, "target": target, "verified": verified},
         )
 
+    def transition_to(self, target: str, os_id: str = "pop-22.04", via: str = "cli", item_id: str = None) -> WorkflowResult:
+        """Single workflow to transition to target graphics mode."""
+        if item_id is None:
+            item_id = f"{via}.graphics_transition.to_{target}"
+        if via == "cli":
+            return self.cli_wf.transition_to_hybrid() if target == "hybrid" else self.cli_wf.set_graphics(target, item_id=item_id)
+        else:
+            return self.gui_wf.transition_graphics("hybrid", target, os_id=os_id, item_id=item_id)
+
     def run_all_cli(self, item_id: str = "cli.graphics_transitions_all") -> WorkflowResult:
         """Run all CLI graphics transitions."""
         order = self.cli_wf.get_transition_order(item_id=item_id)
         results = []
         all_ok = True
         for src, tgt in order:
-            res = self.cli_wf.transition_graphics(src, tgt, item_id=f"{item_id}.{src}_to_{tgt}")
-            results.append({"from": src, "to": tgt, "success": res.success, "data": res.data})
+            res = self.cli_wf.transition_graphics(src, tgt, item_id=f"{item_id}.to_{tgt}")
+            results.append({"to": tgt, "success": res.success, "data": res.data})
             if not res.success:
                 all_ok = False
         return WorkflowResult(

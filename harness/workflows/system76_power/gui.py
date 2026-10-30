@@ -9,6 +9,11 @@ from ...gui import Coords, GuiDriver
 from ...gui.coords import adjust_coords, COORD_SOURCE
 from ..base import Workflow, WorkflowResult
 
+# System76-power specific prompts
+GRAPHICS_MODE_PROMPT_POP22 = "Look at this screenshot of Pop!_OS 22.04 graphics settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
+POWER_PROFILE_PROMPT_UBUNTU = "Look at this screenshot of power/power mode settings. Which power mode is currently selected or highlighted? Answer with just one word: 'performance', 'balanced', or 'battery'. If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'."
+POWER_PROFILE_PROMPT_DEFAULT = "Which power profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
+
 
 def _reboot_and_wait(handler, graceful: bool = False) -> bool:
     """Reboot and wait for the system to come back (reboot-aware resume)."""
@@ -99,19 +104,42 @@ class System76PowerGUIWorkflow(Workflow):
         if not res.success:
             return res
         import time
-        time.sleep(3)
+        time.sleep(5)
         handler = System76Power(artifacts=self.artifacts)
         actual = handler.get_perf_profile()
         print(f"[transition_perf_profile] CLI profile after: {actual} (target={target})", file=sys.stderr, flush=True)
         verified = (actual == target)
-        # Also verify via GUI detection
+        # Also verify via GUI detection using UI workflow
         gui_verified = None
         try:
-            det = self.detect_power_profile(os_id=os_id, target=target)
+            from ..ui_workflow import UIWorkflow
+            ui = UIWorkflow(artifacts=self.artifacts)
+            from ..gui import Coords
+            from ..gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
+            src_c = COORD_SOURCE.get(os_id, (1920, 1080))
+            dst_c = get_display_resolution()
+            clicks = []
+            clicks.append(adjust_coords(Coords.OPEN, src_c, dst_c))
+            if os_id == "pop-22.04":
+                clicks.append(adjust_coords(Coords.POP22_EXTRA, src_c, dst_c))
+            elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+                extra = Coords.UBUNTU_26.get("extra_click")
+                if extra:
+                    clicks.append(adjust_coords(extra, src_c, dst_c))
+            if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+                expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
+                prompt = POWER_PROFILE_PROMPT_UBUNTU
+            else:
+                expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
+                prompt = POWER_PROFILE_PROMPT_DEFAULT
+            det = ui.detect_from_ui(clicks=clicks, prompt=prompt, expected=expected, os_id=os_id, delay_between_clicks=3.0, wait_after_clicks=8.0, item_id=f"{item_id}.detect", max_attempts=5)
             if det.success:
-                detected = (det.data or {}).get("profile", "").lower()
+                detected = (det.data or {}).get("value", "").lower()
+                if detected == "power saver":
+                    detected = "battery"
                 gui_verified = (detected == target.lower())
-        except Exception:
+        except Exception as e:
+            print(f"[transition_perf_profile] gui verify failed: {e}", file=sys.stderr, flush=True)
             gui_verified = None
         if gui_verified is not None:
             verified = verified and gui_verified
@@ -533,9 +561,9 @@ class System76PowerGUIWorkflow(Workflow):
             expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
         # Ubuntu 26.04 uses different labels in COSMIC/GNOME settings
         if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-            prompt = "Look at this screenshot of power/power mode settings. Which power mode is currently selected or highlighted? Answer with just one word: 'performance', 'balanced', or 'battery'. If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'."
+            prompt = POWER_PROFILE_PROMPT_UBUNTU
         else:
-            prompt = "Which power profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
+            prompt = POWER_PROFILE_PROMPT_DEFAULT
 
         # Dismiss any open panels first by clicking center (twice).
         try:
@@ -788,7 +816,7 @@ class System76PowerGUIWorkflow(Workflow):
         """
         expected = {"integrated", "hybrid", "compute", "nvidia"}
         if os_id == "pop-22.04" or os_id.startswith("pop-22"):
-            prompt = "Look at this screenshot of Pop!_OS 22.04 graphics settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
+            prompt = GRAPHICS_MODE_PROMPT_POP22
         elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
             return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
         else:

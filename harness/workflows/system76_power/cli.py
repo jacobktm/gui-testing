@@ -412,16 +412,21 @@ class System76PowerCLIWorkflow(Workflow):
                         try:
                             src = COORD_SOURCE.get(os_id, (1920, 1080))
                             dst = get_display_resolution()
+                            print(f"  [gui_verify] os_id={os_id} src={src} dst={dst}", flush=True)
                             # Click to open
-                            driver.click_at(adjust_coords(Coords.OPEN, src, dst))
-                            time.sleep(2)
-                            driver.click_at(adjust_coords(Coords.POP22_EXTRA, src, dst))
-                            time.sleep(8)
+                            c1 = adjust_coords(Coords.OPEN, src, dst)
+                            print(f"  [gui_verify] clicking OPEN at {c1}", flush=True)
+                            driver.click_at(c1)
+                            time.sleep(3)
+                            c2 = adjust_coords(Coords.POP22_EXTRA, src, dst)
+                            print(f"  [gui_verify] clicking EXTRA at {c2}", flush=True)
+                            driver.click_at(c2)
+                            time.sleep(10)
                         except Exception as e:
                             print(f"  [gui_verify] click failed: {e}", flush=True)
                             try:
                                 gui_wf.open_power_settings(os_id)
-                                time.sleep(8)
+                                time.sleep(10)
                             except Exception:
                                 pass
                         det = gui_wf.detect_graphics_mode(os_id=os_id, target=target)

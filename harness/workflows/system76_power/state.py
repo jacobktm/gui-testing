@@ -74,6 +74,7 @@ def restore_original_graphics_mode(handler: Any) -> bool:
     Returns True if the mode was changed (reboot needed to apply).  Clears
     the persisted mode afterwards so it isn't restored twice.
     """
+    import subprocess
     try:
         original = (_read_state(ORIGINAL_MODE_PATH) or {}).get("mode")
         if original is None:
@@ -82,8 +83,19 @@ def restore_original_graphics_mode(handler: Any) -> bool:
         if current == original:
             ORIGINAL_MODE_PATH.unlink(missing_ok=True)
             return False
-        result = handler._run(["system76-power", "graphics", original], check=False)
-        if result.get("returncode") in (0, None):
+        try:
+            r = subprocess.run(["system76-power", "graphics", original], check=False, timeout=15, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if r.returncode in (0, None):
+                ORIGINAL_MODE_PATH.unlink(missing_ok=True)
+                return True
+            ORIGINAL_MODE_PATH.unlink(missing_ok=True)
+            return True
+        except subprocess.TimeoutExpired:
+            print("[restore_graphics] timed out, proceeding to reboot", flush=True)
+            ORIGINAL_MODE_PATH.unlink(missing_ok=True)
+            return True
+        except Exception as e:
+            print(f"[restore_graphics] failed: {e}", flush=True)
             ORIGINAL_MODE_PATH.unlink(missing_ok=True)
             return True
     except Exception as e:

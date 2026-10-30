@@ -113,19 +113,19 @@ class ReportWriter:
         raise NotImplementedError("PDF reports are not yet implemented")
 
     def archive(self) -> Path | None:
-        """Pack the entire run directory into a ``.tar.gz`` archive.
+        """Pack the entire run directory into a ``.tar.xz`` archive.
 
         Returns the path to the created archive, or ``None`` on failure.
         The archive is placed next to the run directory
-        (``<run_dir>.tar.gz``).
+        (``<run_dir>.tar.xz``).
         """
         run = self.run
         if run is None:
             return None
         try:
             run_dir = Path(run.run_dir)
-            archive_path = run_dir.with_name(run_dir.name + ".tar.gz")
-            with tarfile.open(archive_path, "w:gz", compresslevel=9) as tf:
+            archive_path = run_dir.with_name(run_dir.name + ".tar.xz")
+            with tarfile.open(archive_path, "w:xz", preset=9) as tf:
                 tf.add(run_dir, arcname=run_dir.name)
             print(f"Archived run to: {archive_path}")
             return archive_path

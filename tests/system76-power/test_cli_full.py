@@ -33,20 +33,23 @@ class TestSystem76PowerCLIFull:
             pytest.skip("not switchable graphics")
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.get_graphics_power()
-        # Accept various states
-        p = res.data.get("power")
-        assert res.success or p in ("on", "off", "on (discrete)", "off (discrete)"), (
-            res.summary
-        )
-        # Try setting
-        try:
-            if p and "off" in str(p).lower():
-                wf.set_graphics_power("on")
-            else:
-                wf.set_graphics_power("off")
-                wf.set_graphics_power("on")
-        except Exception:
-            pass
+        p = (res.data or {}).get("power")
+        assert p in ("on", "off", "on (discrete)", "off (discrete)"), f"graphics power query failed: {res.summary}, data={res.data}"
+        # Try setting - must actually work
+        if "off" in str(p).lower():
+            res = wf.set_graphics_power("on")
+            assert res.success, f"failed to turn graphics power on: {res.summary}"
+            p2 = (res.data or {}).get("power")
+            assert "on" in str(p2).lower(), f"graphics power not on after set: {p2}"
+        else:
+            res = wf.set_graphics_power("off")
+            assert res.success, f"failed to turn graphics power off: {res.summary}"
+            p2 = (res.data or {}).get("power")
+            assert "off" in str(p2).lower(), f"graphics power not off after set: {p2}"
+            res = wf.set_graphics_power("on")
+            assert res.success, f"failed to turn graphics power on: {res.summary}"
+            p3 = (res.data or {}).get("power")
+            assert "on" in str(p3).lower(), f"graphics power not on after set: {p3}"
 
     @pytest.mark.reboot
     def test_graphics_transition_to_hybrid(self, artifacts):

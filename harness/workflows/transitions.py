@@ -14,6 +14,10 @@ from .ui_workflow import UIWorkflow
 from ..gui import Coords
 from ..gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
 
+GRAPHICS_MODE_PROMPT_POP22 = "Look at this screenshot of Pop!_OS 22.04 graphics settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
+POWER_PROFILE_PROMPT_UBUNTU = "Look at this screenshot of power/power mode settings. Which power mode is currently selected or highlighted? Answer with just one word: 'performance', 'balanced', or 'battery'. If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'."
+POWER_PROFILE_PROMPT_DEFAULT = "Which power profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
+
 
 class ProfileTransitionWorkflow(Workflow):
     """Single workflow for all power profile transitions."""
@@ -48,10 +52,10 @@ class ProfileTransitionWorkflow(Workflow):
         
         if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
             expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
-            prompt = "Look at this screenshot of power/power mode settings. Which power mode is currently selected or highlighted? Answer with just one word: 'performance', 'balanced', or 'battery'. If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'."
+            prompt = POWER_PROFILE_PROMPT_UBUNTU
         else:
             expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
-            prompt = "Which power profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
+            prompt = POWER_PROFILE_PROMPT_DEFAULT
 
         res = self.ui.detect_from_ui(
             clicks=clicks,
@@ -176,7 +180,7 @@ class GraphicsTransitionWorkflow(Workflow):
         
         clicks = self._get_open_clicks(os_id)
         expected = {"integrated", "hybrid", "compute", "nvidia"}
-        prompt = "Look at this screenshot of Pop!_OS 22.04 graphics settings. What graphics mode is currently selected or active? Give me the response in just a single word: either 'integrated', 'hybrid', 'compute', or 'nvidia'."
+        prompt = GRAPHICS_MODE_PROMPT_POP22
 
         res = self.ui.detect_from_ui(
             clicks=clicks,

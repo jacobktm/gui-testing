@@ -252,64 +252,101 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_profile_performance_to_balanced(self, artifacts):
         """Switch to balanced via CLI, verify GUI reflects it."""
-        from harness.workflows import System76PowerCLIWorkflow
-        import os
+        from harness.workflows import ProfileTransitionWorkflow
+        from handlers.system76_power import System76Power
+        import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.verify_cli_profile_reflected_in_extension("balanced", os_id=os_id, item_id="cli.profile_reflected.performance_to_balanced")
+        handler = System76Power(artifacts=artifacts)
+        handler.switch_perf_profile("performance")
+        time.sleep(15)
+        handler.switch_perf_profile("balanced")
+        time.sleep(25)
+        wf = ProfileTransitionWorkflow(artifacts=artifacts)
+        res = wf.validate_profile("balanced", os_id, item_id="cli.profile_reflected.performance_to_balanced")
         assert res.success, res.summary
 
     def test_cli_profile_balanced_to_battery(self, artifacts):
         """Switch to battery via CLI, verify GUI reflects it."""
-        from harness.workflows import System76PowerCLIWorkflow
-        import os
+        from harness.workflows import ProfileTransitionWorkflow
+        from handlers.system76_power import System76Power
+        import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.verify_cli_profile_reflected_in_extension("battery", os_id=os_id, item_id="cli.profile_reflected.balanced_to_battery")
+        handler = System76Power(artifacts=artifacts)
+        handler.switch_perf_profile("balanced")
+        time.sleep(15)
+        handler.switch_perf_profile("battery")
+        time.sleep(25)
+        wf = ProfileTransitionWorkflow(artifacts=artifacts)
+        res = wf.validate_profile("battery", os_id, item_id="cli.profile_reflected.balanced_to_battery")
         assert res.success, res.summary
 
     def test_cli_profile_battery_to_performance(self, artifacts):
         """Switch to performance via CLI, verify GUI reflects it."""
-        from harness.workflows import System76PowerCLIWorkflow
-        import os
+        from harness.workflows import ProfileTransitionWorkflow
+        from handlers.system76_power import System76Power
+        import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.verify_cli_profile_reflected_in_extension("performance", os_id=os_id, item_id="cli.profile_reflected.battery_to_performance")
+        handler = System76Power(artifacts=artifacts)
+        handler.switch_perf_profile("battery")
+        time.sleep(15)
+        handler.switch_perf_profile("performance")
+        time.sleep(25)
+        wf = ProfileTransitionWorkflow(artifacts=artifacts)
+        res = wf.validate_profile("performance", os_id, item_id="cli.profile_reflected.battery_to_performance")
         assert res.success, res.summary
 
     def test_cli_profile_performance_to_battery(self, artifacts):
         """Switch to battery via CLI, verify GUI reflects it."""
-        from harness.workflows import System76PowerCLIWorkflow
-        import os
+        from harness.workflows import ProfileTransitionWorkflow
+        from handlers.system76_power import System76Power
+        import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.verify_cli_profile_reflected_in_extension("battery", os_id=os_id, item_id="cli.profile_reflected.performance_to_battery")
+        handler = System76Power(artifacts=artifacts)
+        handler.switch_perf_profile("performance")
+        time.sleep(15)
+        handler.switch_perf_profile("battery")
+        time.sleep(25)
+        wf = ProfileTransitionWorkflow(artifacts=artifacts)
+        res = wf.validate_profile("battery", os_id, item_id="cli.profile_reflected.performance_to_battery")
         assert res.success, res.summary
 
     def test_cli_profile_battery_to_balanced(self, artifacts):
         """Switch to balanced via CLI, verify GUI reflects it."""
-        from harness.workflows import System76PowerCLIWorkflow
-        import os
+        from harness.workflows import ProfileTransitionWorkflow
+        from handlers.system76_power import System76Power
+        import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.verify_cli_profile_reflected_in_extension("balanced", os_id=os_id, item_id="cli.profile_reflected.battery_to_balanced")
+        handler = System76Power(artifacts=artifacts)
+        handler.switch_perf_profile("battery")
+        time.sleep(15)
+        handler.switch_perf_profile("balanced")
+        time.sleep(25)
+        wf = ProfileTransitionWorkflow(artifacts=artifacts)
+        res = wf.validate_profile("balanced", os_id, item_id="cli.profile_reflected.battery_to_balanced")
         assert res.success, res.summary
 
     def test_cli_profile_balanced_to_performance(self, artifacts):
         """Switch to performance via CLI, verify GUI reflects it."""
-        from harness.workflows import System76PowerCLIWorkflow
-        import os
+        from harness.workflows import ProfileTransitionWorkflow
+        from handlers.system76_power import System76Power
+        import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.verify_cli_profile_reflected_in_extension("performance", os_id=os_id, item_id="cli.profile_reflected.balanced_to_performance")
+        handler = System76Power(artifacts=artifacts)
+        handler.switch_perf_profile("balanced")
+        time.sleep(15)
+        handler.switch_perf_profile("performance")
+        time.sleep(25)
+        wf = ProfileTransitionWorkflow(artifacts=artifacts)
+        res = wf.validate_profile("performance", os_id, item_id="cli.profile_reflected.balanced_to_performance")
         assert res.success, res.summary
 
     def test_cli_profile_reflected_in_extension(self, artifacts):
         """Test that any power profile change from CLI is reflected in the extension."""
-        from harness.workflows import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.verify_all_cli_profiles_reflected_in_extension(item_id="cli.profile_reflected")
+        from harness.workflows import ProfileTransitionWorkflow
+        import os
+        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        wf = ProfileTransitionWorkflow(artifacts=artifacts)
+        res = wf.run_all_cli_validate(os_id=os_id, item_id="cli.profile_reflected")
         if (res.data or {}).get("skipped"):
             return
         assert res.success, res.summary

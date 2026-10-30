@@ -1,9 +1,17 @@
-import gi
+try:
+    import gi
 
-gi.require_version("Gtk", "3.0")
-gi.require_version("Gdk", "3.0")
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
 
-from gi.repository import Gtk, Gdk, GLib
+    from gi.repository import Gtk, Gdk, GLib
+    _HAS_GI = True
+except Exception:
+    gi = None
+    Gtk = None
+    Gdk = None
+    GLib = None
+    _HAS_GI = False
 
 __all__ = [
     "get_display",
@@ -27,36 +35,56 @@ def _monitor_geometry(monitor):
 
 
 def get_monitors():
-    display = Gdk.Display.get_default()
-    return [_monitor_geometry(display.get_monitor(i))
-            for i in range(display.get_n_monitors())]
+    if not _HAS_GI or Gdk is None:
+        return []
+    try:
+        display = Gdk.Display.get_default()
+        if display is None:
+            return []
+        return [_monitor_geometry(display.get_monitor(i))
+                for i in range(display.get_n_monitors())]
+    except Exception:
+        return []
 
 
 def get_display():
+    if not _HAS_GI or Gtk is None or Gdk is None or GLib is None:
+        return {}
     geometry = {}
 
     def inspect():
-        gdk_win = window.get_window()
-        if not gdk_win:
-            return True
+        try:
+            gdk_win = window.get_window()
+            if not gdk_win:
+                return True
 
-        display = window.get_display()
-        monitor = display.get_monitor_at_window(gdk_win)
+            display = window.get_display()
+            monitor = display.get_monitor_at_window(gdk_win)
 
-        if monitor:
-            geometry.update(_monitor_geometry(monitor))
-            window.destroy()
-            Gtk.main_quit()
-            return False  # Stop GLib timeout
-        return True  # Retry if compositor hasn't finished handshake
+            if monitor:
+                geometry.update(_monitor_geometry(monitor))
+                window.destroy()
+                Gtk.main_quit()
+                return False  # Stop GLib timeout
+            return True  # Retry if compositor hasn't finished handshake
+        except Exception:
+            try:
+                window.destroy()
+                Gtk.main_quit()
+            except Exception:
+                pass
+            return False
 
-    window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-    window.set_decorated(False)
-    window.set_default_size(10, 10)
-    window.connect("realize", lambda w: GLib.timeout_add(60, inspect))
-    GLib.timeout_add(250, Gtk.main_quit)
-    window.show_all()
-    Gtk.main()
+    try:
+        window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        window.set_decorated(False)
+        window.set_default_size(10, 10)
+        window.connect("realize", lambda w: GLib.timeout_add(60, inspect))
+        GLib.timeout_add(250, Gtk.main_quit)
+        window.show_all()
+        Gtk.main()
+    except Exception:
+        return {}
 
     return geometry
 

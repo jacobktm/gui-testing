@@ -531,7 +531,11 @@ class System76PowerGUIWorkflow(Workflow):
             expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
         else:
             expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
-        prompt = "Which power profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
+        # Ubuntu 26.04 uses different labels in COSMIC/GNOME settings
+        if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+            prompt = "Look at this screenshot of power/power mode settings. Which power mode is currently selected or highlighted? Answer with just one word: 'performance', 'balanced', or 'battery'. If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'."
+        else:
+            prompt = "Which power profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
 
         # Dismiss any open panels first by clicking center (twice).
         try:

@@ -6,7 +6,7 @@ __all__ = ["Coords"]
 class Coords:
     """Predictable normalized coordinates for known layouts."""
 
-    OPEN = (0.955, 0.014)
+    OPEN = (0.975, 0.010)
     POP22_EXTRA = (0.955, 0.20)
 
     POP22_PROFILES = {

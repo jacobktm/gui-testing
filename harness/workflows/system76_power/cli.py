@@ -403,14 +403,27 @@ class System76PowerCLIWorkflow(Workflow):
                     try:
                         from ..system76_power.gui import System76PowerGUIWorkflow
                         from ...gui import GuiDriver
+                        from ...gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
+                        from ...gui import Coords
                         import time
                         gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
+                        driver = GuiDriver(artifacts=self.artifacts)
                         # Make sure power/settings panel is open like the user would see
                         try:
-                            gui_wf.open_power_settings(os_id)
+                            src = COORD_SOURCE.get(os_id, (1920, 1080))
+                            dst = get_display_resolution()
+                            # Click to open
+                            driver.click_at(adjust_coords(Coords.OPEN, src, dst))
+                            time.sleep(2)
+                            driver.click_at(adjust_coords(Coords.POP22_EXTRA, src, dst))
                             time.sleep(8)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print(f"  [gui_verify] click failed: {e}", flush=True)
+                            try:
+                                gui_wf.open_power_settings(os_id)
+                                time.sleep(8)
+                            except Exception:
+                                pass
                         det = gui_wf.detect_graphics_mode(os_id=os_id, target=target)
                         if det.success:
                             detected = (det.data or {}).get("graphics", "").lower()

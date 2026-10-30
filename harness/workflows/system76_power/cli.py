@@ -386,20 +386,31 @@ class System76PowerCLIWorkflow(Workflow):
                             os_id = f"{os_id}-{version}"
                     except Exception:
                         pass
+                # Treat any Pop!_OS as pop-22.04 style for graphics extension validation
+                if os_id.startswith("pop"):
+                    try:
+                        with open("/etc/os-release") as f:
+                            content = f.read().lower()
+                        if "22.04" in content or "pop-22" in os_id:
+                            os_id = "pop-22.04"
+                        elif "24.04" in content:
+                            os_id = "pop-24.04"
+                        else:
+                            os_id = "pop-22.04"
+                    except Exception:
+                        os_id = "pop-22.04"
                 if os_id == "pop-22.04" or os_id.startswith("pop-22"):
                     try:
-                        from ...gui import Coords, GuiDriver
                         from ..system76_power.gui import System76PowerGUIWorkflow
-                        driver = GuiDriver(artifacts=self.artifacts)
-                        try:
-                            driver.click_at(Coords.OPEN)
-                        except Exception:
-                            pass
-                        try:
-                            driver.click_at(Coords.POP22_EXTRA)
-                        except Exception:
-                            pass
+                        from ...gui import GuiDriver
+                        import time
                         gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
+                        # Make sure power/settings panel is open like the user would see
+                        try:
+                            gui_wf.open_power_settings(os_id)
+                            time.sleep(8)
+                        except Exception:
+                            pass
                         det = gui_wf.detect_graphics_mode(os_id=os_id, target=target)
                         if det.success:
                             detected = (det.data or {}).get("graphics", "").lower()
@@ -407,12 +418,12 @@ class System76PowerCLIWorkflow(Workflow):
                         else:
                             gui_verified = False
                         try:
-                            from ...gui import GuiDriver
                             d = GuiDriver(artifacts=self.artifacts)
                             d.click_at((0.5, 0.5))
                         except Exception:
                             pass
-                    except Exception:
+                    except Exception as e:
+                        print(f"  [gui_verify] failed: {e}", flush=True)
                         gui_verified = None
 
                 verified = target_ok

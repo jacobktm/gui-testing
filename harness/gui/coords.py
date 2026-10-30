@@ -186,9 +186,8 @@ def adjust_coords(
 ) -> tuple[float, float]:
     """Adjust normalized coordinates from source resolution to destination.
 
-    If the UI uses fixed pixel positions, normalized coords change with
-    resolution.  This converts from the resolution the coords were measured
-    on to the actual display resolution.
+    Normalized coords are relative to screen. Only adjust for aspect ratio differences;
+    if aspect ratios match, return coords unchanged regardless of resolution.
     """
     if dst is None:
         dst = get_display_resolution()
@@ -201,27 +200,36 @@ def adjust_coords(
 
     g1 = gcd(src_w, src_h)
     g2 = gcd(dst_w, dst_h)
-    src_ar = (src_w // g1, src_h // g1)
+    src_ar = (src_w // g1, src_h // g1)  # e.g. (16,9), (8,5) for 16:10
     dst_ar = (dst_w // g2, dst_h // g2)
-    # For Pop!_OS style UIs, horizontal positions are fixed in normalized space
-    # across 16:9 variants; only vertical may need adjustment.
-    if src_ar == (16, 9) and dst_ar[0] == 16 and dst_ar[1] in (9, 10):
+
+    # Check if aspect ratios are the same (accounting for reduced forms like 16:10 = 8:5)
+    def _same_ar(a, b):
+        if a == b:
+            return True
+        # Compare as floats with small tolerance
+        try:
+            return abs((a[0]/a[1]) - (b[0]/b[1])) < 0.001
+        except Exception:
+            return False
+
+    # If same aspect ratio, do NOT scale - normalized coords are identical
+    if _same_ar(src_ar, dst_ar):
+        return (x, y)
+
+    # Different aspect ratios - only adjust if it's a common 16:9 <-> 16:10 case
+    # For these, horizontal positions are typically fixed in normalized space
+    def _is_169(ar):
+        return abs(ar[0]/ar[1] - 16/9) < 0.001
+    def _is_1610(ar):
+        return abs(ar[0]/ar[1] - 16/10) < 0.001 or abs(ar[0]/ar[1] - 8/5) < 0.001
+
+    if (_is_169(src_ar) and _is_1610(dst_ar)) or (_is_1610(src_ar) and _is_169(dst_ar)):
+        # Keep x fixed, scale y only for vertical layout differences
         py = y * src_h
         return (x, py / dst_h)
-    if src_ar[0] == 16 and src_ar[1] in (9, 10) and dst_ar == (16, 9):
-        py = y * src_h
-        return (x, py / dst_h)
-    if src_ar == dst_ar:
-        py = y * src_h
-        return (x, py / dst_h)
-    # Default: convert normalized -> pixels -> normalized.
-    px = x * src_w
+
+    # For other aspect ratio changes, also keep x fixed and only scale y
+    # Never scale x based on resolution alone
     py = y * src_h
-    nx = px / dst_w
-    ny = py / dst_h
-    # Clamp to sane range
-    if nx < 0 or nx > 1 or ny < 0 or ny > 1:
-        # Fall back to keeping x same, scaling y only
-        py = y * src_h
-        return (x, py / dst_h)
-    return (nx, ny)
+    return (x, py / dst_h)

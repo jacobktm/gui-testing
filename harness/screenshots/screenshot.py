@@ -245,9 +245,20 @@ def _load_monitors(
     try:
         from ..display import get_monitors
 
-        return get_monitors()
+        m = get_monitors()
+        if m:
+            return m
+        # Fallback to a single display
+        from ..gui.coords import get_display_resolution
+        w, h = get_display_resolution()
+        return [{"index": 0, "x": 0, "y": 0, "width": w, "height": h, "scale": 1, "model": ""}]
     except Exception as exc:
-        raise ScreenshotError(f"could not detect monitors: {exc}") from exc
+        try:
+            from ..gui.coords import get_display_resolution
+            w, h = get_display_resolution()
+            return [{"index": 0, "x": 0, "y": 0, "width": w, "height": h, "scale": 1, "model": ""}]
+        except Exception:
+            raise ScreenshotError(f"could not detect monitors: {exc}") from exc
 
 
 def monitor_crop_box(

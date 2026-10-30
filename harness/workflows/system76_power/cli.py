@@ -818,7 +818,17 @@ class System76PowerCLIWorkflow(Workflow):
             phase="action",
             artifacts=self.artifacts,
         )
-        handler.set_graphics_power(state)
+        try:
+            handler.set_graphics_power(state)
+            import time
+            time.sleep(10)
+        except Exception as e:
+            if self.artifacts is not None and item_id:
+                try:
+                    self.artifacts.save_text(item_id, "action", f"set:{state} error:{e}\n", step="set")
+                except Exception:
+                    pass
+            raise
         p = handler.get_graphics_power()
         if self.artifacts is not None and item_id:
             try:

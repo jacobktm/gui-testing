@@ -253,12 +253,23 @@ class System76Power:
             return False
 
     def get_graphics_power(self):
-        result = self._run(['system76-power', 'graphics', 'power'], check=False, timeout=300.0)
-        if result['returncode'] == 0 and result['stdout'].strip():
-            try:
-                return result['stdout'].strip().lower()
-            except Exception:
-                pass
+        try:
+            result = self._run(['system76-power', 'graphics', 'power'], check=False, timeout=300.0)
+            if result.get('returncode') == 0 and result.get('stdout', '').strip():
+                try:
+                    return result['stdout'].strip().lower()
+                except Exception:
+                    pass
+            # Check stderr for common patterns
+            stderr = (result.get('stderr') or '').lower()
+            if 'no devices found' in stderr or 'powered off' in stderr or 'discrete' in stderr:
+                # Try to parse from stderr
+                if 'off' in stderr:
+                    return 'off'
+                if 'on' in stderr:
+                    return 'on'
+        except Exception as e:
+            self._log({'type': 'graphics_power_get_error', 'error': str(e)})
         return None
 
     def set_graphics_power(self, state=None):
@@ -277,11 +288,24 @@ class System76Power:
                 self._graphics_power_cleanup_registered = True
         except Exception:
             pass
-        result = self._run(['system76-power', 'graphics', 'power', state], check=False, timeout=300.0)
-        if result['returncode'] == 0:
-            self._log({'type': 'graphics_power_set', 'state': state})
-        else:
-            self._log({'type': 'graphics_power_set_failed', 'state': state, 'stderr': result.get('stderr')})
+        try:
+            result = self._run(['system76-power', 'graphics', 'power', state], check=False, timeout=300.0)
+            if result.get('returncode') == 0:
+                self._log({'type': 'graphics_power_set', 'state': state})
+            else:
+                self._log({'type': 'graphics_power_set_failed', 'state': state, 'stderr': result.get('stderr')})
+        except subprocess.TimeoutExpired:
+            self._log({'type': 'graphics_power_set_timeout', 'state': state})
+            # Try to recover
+            try:
+                subprocess.run(['pkill', '-9', '-f', 'system76-power'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(['sudo', '-n', 'systemctl', 'restart', 'com.system76.PowerDaemon.service'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+            except Exception:
+                pass
+            raise
+        except Exception as e:
+            self._log({'type': 'graphics_power_set_error', 'state': state, 'error': str(e)})
+            raise
 
     def restart_daemon(self) -> bool:
         """Restart the system76-power daemon.

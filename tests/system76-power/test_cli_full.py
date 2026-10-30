@@ -27,29 +27,51 @@ class TestSystem76PowerCLIFull:
         assert result in ("switchable", "not switchable"), result
 
     def test_graphics_power_query_set(self, artifacts):
+        import subprocess
         from handlers.system76_power import System76Power
+        from harness.workflows.system76_power.state import load_switchable_state
         _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
+        switchable = load_switchable_state()
+        if switchable is None:
+            switchable = _h.switchable()
+        if switchable != "switchable":
             pytest.skip("not switchable graphics")
+        # Ensure we're in hybrid mode for graphics power control to work
+        try:
+            from harness.workflows import System76PowerCLIWorkflow
+            wf2 = System76PowerCLIWorkflow(artifacts=artifacts)
+            wf2.transition_to_hybrid(item_id="cli.graphics_transition.pre_power")
+        except Exception:
+            pass
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.get_graphics_power()
+        try:
+            res = wf.get_graphics_power()
+        except subprocess.TimeoutExpired:
+            raise AssertionError("graphics power query timed out")
+        except Exception as e:
+            raise AssertionError(f"graphics power query failed: {e}")
         p = (res.data or {}).get("power")
         assert p in ("on", "off", "on (discrete)", "off (discrete)"), f"graphics power query failed: {res.summary}, data={res.data}"
         # Try setting - must actually work
-        if "off" in str(p).lower():
-            res = wf.set_graphics_power("on")
-            assert res.success, f"failed to turn graphics power on: {res.summary}"
-            p2 = (res.data or {}).get("power")
-            assert "on" in str(p2).lower(), f"graphics power not on after set: {p2}"
-        else:
-            res = wf.set_graphics_power("off")
-            assert res.success, f"failed to turn graphics power off: {res.summary}"
-            p2 = (res.data or {}).get("power")
-            assert "off" in str(p2).lower(), f"graphics power not off after set: {p2}"
-            res = wf.set_graphics_power("on")
-            assert res.success, f"failed to turn graphics power on: {res.summary}"
-            p3 = (res.data or {}).get("power")
-            assert "on" in str(p3).lower(), f"graphics power not on after set: {p3}"
+        try:
+            if "off" in str(p).lower():
+                res = wf.set_graphics_power("on")
+                assert res.success, f"failed to turn graphics power on: {res.summary}"
+                p2 = (res.data or {}).get("power")
+                assert "on" in str(p2).lower(), f"graphics power not on after set: {p2}"
+            else:
+                res = wf.set_graphics_power("off")
+                assert res.success, f"failed to turn graphics power off: {res.summary}"
+                p2 = (res.data or {}).get("power")
+                assert "off" in str(p2).lower(), f"graphics power not off after set: {p2}"
+                res = wf.set_graphics_power("on")
+                assert res.success, f"failed to turn graphics power on: {res.summary}"
+                p3 = (res.data or {}).get("power")
+                assert "on" in str(p3).lower(), f"graphics power not on after set: {p3}"
+        except subprocess.TimeoutExpired:
+            raise AssertionError("graphics power set timed out")
+        except Exception as e:
+            raise AssertionError(f"graphics power set failed: {e}")
 
     @pytest.mark.reboot
     def test_graphics_transition_to_hybrid(self, artifacts):

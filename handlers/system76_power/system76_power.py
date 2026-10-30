@@ -253,7 +253,7 @@ class System76Power:
             return False
 
     def get_graphics_power(self):
-        result = self._run(['system76-power', 'graphics', 'power'], check=False, timeout=60.0)
+        result = self._run(['system76-power', 'graphics', 'power'], check=False, timeout=300.0)
         if result['returncode'] == 0 and result['stdout'].strip():
             try:
                 return result['stdout'].strip().lower()
@@ -277,7 +277,7 @@ class System76Power:
                 self._graphics_power_cleanup_registered = True
         except Exception:
             pass
-        result = self._run(['system76-power', 'graphics', 'power', state], check=False, timeout=60.0)
+        result = self._run(['system76-power', 'graphics', 'power', state], check=False, timeout=300.0)
         if result['returncode'] == 0:
             self._log({'type': 'graphics_power_set', 'state': state})
         else:

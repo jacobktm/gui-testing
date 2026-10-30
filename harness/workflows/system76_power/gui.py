@@ -522,7 +522,7 @@ class System76PowerGUIWorkflow(Workflow):
             expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
         else:
             expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
-        prompt = "Which performance profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
+        prompt = "Which power profile is selected or highlighted? I want only a single word answer either 'performance', 'battery', or 'balanced'. Power Saver is the same as 'battery'."
 
         # Dismiss any open panels first by clicking center (twice).
         try:

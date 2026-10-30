@@ -57,31 +57,32 @@ def parse_detection(
             except ValueError:
                 normalized = None
 
-    # Extract first word token as the primary value
-    # Prefer a token that matches expected if provided
+    # Extract word tokens as the primary value
     tokens = _WORD_RE.findall(text)
     value = None
     if expected:
         expected_set = {str(e).strip().lower() for e in expected}
-        # First try exact token match.
-        for token in tokens:
+        # Prefer the LAST token that matches expected (conclusion is usually at the end)
+        for token in reversed(tokens):
             if token.lower() in expected_set:
                 value = token
                 break
-        # Then try multi-word match (e.g., "Power Saver" in text).
+        # Then try multi-word match (e.g., "Power Saver" in text) - prefer last occurrence
         if value is None:
             text_lower = text.lower()
             for exp in sorted(expected_set, key=len, reverse=True):
-                if exp in text_lower:
+                # Find last occurrence
+                idx = text_lower.rfind(exp)
+                if idx >= 0:
                     value = exp
                     break
     if value is None and tokens:
-        value = tokens[0]
+        value = tokens[-1]  # Use last token as fallback
     if value is None:
-        # Fallback: take first alphanumeric sequence
-        m = re.search(r"([A-Za-z][A-Za-z\-_]+)", text)
-        if m:
-            value = m.group(1)
+        # Fallback: take last alphanumeric sequence
+        matches = list(re.finditer(r"([A-Za-z][A-Za-z\-_]+)", text))
+        if matches:
+            value = matches[-1].group(1)
 
     if value is None:
         raise DetectionParseError(f"could not parse value from response: {text!r}")

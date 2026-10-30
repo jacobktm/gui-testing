@@ -186,8 +186,8 @@ def adjust_coords(
 ) -> tuple[float, float]:
     """Adjust normalized coordinates from source resolution to destination.
 
-    Normalized coords are relative to screen. Only adjust for aspect ratio differences;
-    if aspect ratios match, return coords unchanged regardless of resolution.
+    Normalized coords are percentages of the display. Same aspect ratio = same percentages
+    regardless of resolution. Different aspect ratios require transformation of both axes.
     """
     if dst is None:
         dst = get_display_resolution()
@@ -200,36 +200,57 @@ def adjust_coords(
 
     g1 = gcd(src_w, src_h)
     g2 = gcd(dst_w, dst_h)
-    src_ar = (src_w // g1, src_h // g1)  # e.g. (16,9), (8,5) for 16:10
+    src_ar = (src_w // g1, src_h // g1)
     dst_ar = (dst_w // g2, dst_h // g2)
 
-    # Check if aspect ratios are the same (accounting for reduced forms like 16:10 = 8:5)
     def _same_ar(a, b):
         if a == b:
             return True
-        # Compare as floats with small tolerance
         try:
             return abs((a[0]/a[1]) - (b[0]/b[1])) < 0.001
         except Exception:
             return False
 
-    # If same aspect ratio, do NOT scale - normalized coords are identical
+    # Same aspect ratio - normalized coords unchanged regardless of resolution
     if _same_ar(src_ar, dst_ar):
         return (x, y)
 
-    # Different aspect ratios - only adjust if it's a common 16:9 <-> 16:10 case
-    # For these, horizontal positions are typically fixed in normalized space
+    # Different aspect ratios
     def _is_169(ar):
         return abs(ar[0]/ar[1] - 16/9) < 0.001
     def _is_1610(ar):
         return abs(ar[0]/ar[1] - 16/10) < 0.001 or abs(ar[0]/ar[1] - 8/5) < 0.001
 
+    # Common case: 16:9 <-> 16:10 - vertical space differs, horizontal positions often fixed in UI
     if (_is_169(src_ar) and _is_1610(dst_ar)) or (_is_1610(src_ar) and _is_169(dst_ar)):
-        # Keep x fixed, scale y only for vertical layout differences
         py = y * src_h
         return (x, py / dst_h)
 
-    # For other aspect ratio changes, also keep x fixed and only scale y
-    # Never scale x based on resolution alone
+    # Ultrawide or other aspect ratios - both axes need transformation
+    # Convert from source normalized space to destination normalized space
+    src_ar_ratio = src_ar[0] / src_ar[1]
+    dst_ar_ratio = dst_ar[0] / dst_ar[1]
+    
+    # Scale based on aspect ratio change
+    # If going from 16:9 to 21:9 (wider), horizontal positions need adjustment
+    aspect_scale = src_ar_ratio / dst_ar_ratio
+    
+    # For ultrawides, we need to scale x
+    # This maintains relative positioning in the transformed coordinate space
+    nx = x * aspect_scale
+    # Adjust y as well for completeness
+    ny = y  # often y is less affected, but better to be consistent
+    
+    # Alternative approach: treat as scaling from pixel space
+    px = x * src_w
     py = y * src_h
-    return (x, py / dst_h)
+    nx = px / dst_w
+    ny = py / dst_h
+    
+    # Clamp to reasonable range
+    if nx < 0 or nx > 1.5 or ny < 0 or ny > 1.5:  # allow slight overflow for ultrawides
+        # Fallback to aspect-corrected scaling
+        nx = x * aspect_scale
+        ny = y
+    
+    return (max(0, min(1.5, nx)), max(0, min(1, ny)))

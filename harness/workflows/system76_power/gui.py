@@ -651,7 +651,7 @@ class System76PowerGUIWorkflow(Workflow):
             except Exception:
                 pass
             import time as _t2b
-            _t2b.sleep(3)
+            _t2b.sleep(8)
 
         if self.artifacts is not None and item_id:
             try:

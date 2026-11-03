@@ -27,6 +27,7 @@ import pwd
 import sys
 
 from .autostart import ResumePlan, install_resume_unit, remove_resume_unit
+from .idle import disable_idle, restore_idle, save_idle_state
 from .resume import (
     ResumeState,
     bump_attempts,
@@ -62,6 +63,7 @@ __all__ = [
     "detect_display_manager",
     "detect_gui_user",
     "detect_session",
+    "disable_idle",
     "finish_reboot",
     "force_restore_autologin",
     "install_resume_unit",
@@ -74,7 +76,9 @@ __all__ = [
     "render_lightdm_autologin",
     "render_sddm_autologin",
     "restore_autologin",
+    "restore_idle",
     "resume_dir",
+    "save_idle_state",
 ]
 
 

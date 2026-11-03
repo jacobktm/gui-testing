@@ -144,12 +144,17 @@ if $NEEDS_REBOOT_SETUP; then
     # Enable autologin (now passwordless)
     sudo -n python3 -m harness.reboot enable
 
+    # Disable idle/lock/suspend to prevent screen lock during tests
+    python3 -c "from harness.reboot import save_idle_state, disable_idle; save_idle_state(); disable_idle()" 2>/dev/null || true
+
     # Cleanup function: restore autologin + remove sudoers rule
     cleanup() {
         echo ""
         echo "Cleaning up reboot test setup..."
         sudo -n python3 -m harness.reboot restore 2>/dev/null || true
         sudo -n python3 -m harness.reboot cleanup 2>/dev/null || true
+        # Restore idle/lock settings
+        python3 -c "from harness.reboot import restore_idle; restore_idle()" 2>/dev/null || true
         # Restore original graphics mode if tests changed it.
         python3 -c "from handlers.system76_power import System76Power; h=System76Power(); h.restore_original_graphics_mode() and h.reboot()" 2>/dev/null || true
         # Restore brightness to max (tests may leave it at min).
@@ -163,6 +168,10 @@ fi
 # --- Activate venv and run pytest ---
 # shellcheck source=/dev/null
 source "$VENV_DIR/bin/activate"
+
+# Disable idle/lock/suspend for non-reboot runs too
+python3 -c "from harness.reboot import save_idle_state, disable_idle; save_idle_state(); disable_idle()" 2>/dev/null || true
+trap 'python3 -c "from harness.reboot import restore_idle; restore_idle()" 2>/dev/null || true' EXIT
 
 if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
     echo "Running all tests (verbose)..."

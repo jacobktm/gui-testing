@@ -272,6 +272,12 @@ def pytest_collection_finish(session):
 def pytest_sessionfinish(session, exitstatus):
     config = session.config
     _finalize_run(config)
+    # Restore idle/lock settings
+    try:
+        from harness.reboot import restore_idle
+        restore_idle()
+    except Exception:
+        pass
     # Restore brightness to max (tests may leave it at min).
     try:
         from harness.brightness import BrightnessHandler

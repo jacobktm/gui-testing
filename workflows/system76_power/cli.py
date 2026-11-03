@@ -401,39 +401,43 @@ class System76PowerCLIWorkflow(Workflow):
                         os_id = "pop-22.04"
                 if os_id == "pop-22.04" or os_id.startswith("pop-22"):
                     try:
-                        from .gui import System76PowerGUIWorkflow
-                        from harness.gui import GuiDriver
-                        from harness.gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
-                        from harness.gui import Coords
-                        import time
-                        gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
-                        # Use the workflow's open method which is more reliable
-                        try:
-                            gui_wf.open_power_settings(os_id)
-                            time.sleep(12)
-                        except Exception as e:
-                            print(f"  [gui_verify] open failed: {e}", flush=True)
+                            from .gui import System76PowerGUIWorkflow
+                            from harness.gui import GuiDriver
+                            from harness.gui.coords import adjust_coords, get_display_resolution
+                            from harness.platform import get_flavor_for_os_id
+                            import time
+                            gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
+                            # Use the workflow's open method which is more reliable
                             try:
-                                driver = GuiDriver(artifacts=self.artifacts)
-                                src = COORD_SOURCE.get(os_id, (1920, 1080))
-                                dst = get_display_resolution()
-                                driver.click_at(adjust_coords(Coords.OPEN, src, dst))
-                                time.sleep(3)
-                                driver.click_at(adjust_coords(Coords.POP22_EXTRA, src, dst))
+                                gui_wf.open_power_settings(os_id)
                                 time.sleep(12)
+                            except Exception as e:
+                                print(f"  [gui_verify] open failed: {e}", flush=True)
+                                try:
+                                    driver = GuiDriver(artifacts=self.artifacts)
+                                    flavor = get_flavor_for_os_id(os_id)
+                                    src = flavor.get_coord_source()
+                                    dst = get_display_resolution()
+                                    for c in flavor.get_open_clicks():
+                                        driver.click_at(adjust_coords(c, src, dst))
+                                        time.sleep(2)
+                                    for c in flavor.get_extra_clicks():
+                                        driver.click_at(adjust_coords(c, src, dst))
+                                        time.sleep(2)
+                                    time.sleep(8)
+                                except Exception:
+                                    pass
+                            det = gui_wf.detect_graphics_mode(os_id=os_id, target=target)
+                            if det.success:
+                                detected = (det.data or {}).get("graphics", "").lower()
+                                gui_verified = (detected == target.lower())
+                            else:
+                                gui_verified = None  # Don't fail the whole test if GUI detection fails
+                            try:
+                                d = GuiDriver(artifacts=self.artifacts)
+                                d.click_at((0.5, 0.5))
                             except Exception:
                                 pass
-                        det = gui_wf.detect_graphics_mode(os_id=os_id, target=target)
-                        if det.success:
-                            detected = (det.data or {}).get("graphics", "").lower()
-                            gui_verified = (detected == target.lower())
-                        else:
-                            gui_verified = None  # Don't fail the whole test if GUI detection fails
-                        try:
-                            d = GuiDriver(artifacts=self.artifacts)
-                            d.click_at((0.5, 0.5))
-                        except Exception:
-                            pass
                     except Exception as e:
                         print(f"  [gui_verify] failed: {e}", flush=True)
                         gui_verified = None
@@ -570,22 +574,23 @@ class System76PowerCLIWorkflow(Workflow):
                 log(f"[brightness_reboot] current profile after reboot: {prof}")
             except Exception as e:
                 log(f"[brightness_reboot] profile check failed: {e}")
-            # Wait for daemon to settle, reading brightness until it stabilizes.
-            readings = []
-            prev = None
-            stable_count = 0
-            for i in range(30):
-                time.sleep(2)
-                after = get_brightness()
-                readings.append(after)
-                log(f"[brightness_reboot] reading {i}: {after}")
-                if after is not None and after == prev:
-                    stable_count += 1
-                    if stable_count >= 3:
-                        break
-                else:
-                    stable_count = 0
-                prev = after
+                # Wait for daemon to settle, reading brightness until it stabilizes.
+                time.sleep(10)
+                readings = []
+                prev = None
+                stable_count = 0
+                for i in range(60):
+                    time.sleep(2)
+                    after = get_brightness()
+                    readings.append(after)
+                    log(f"[brightness_reboot] reading {i}: {after}")
+                    if after is not None and after == prev:
+                        stable_count += 1
+                        if stable_count >= 5:
+                            break
+                    else:
+                        stable_count = 0
+                    prev = after
             after = readings[-1] if readings else get_brightness()
             max_b = get_max_brightness()
             log(f"[brightness_reboot] final after={after} max={max_b} readings={readings}")
@@ -617,16 +622,16 @@ class System76PowerCLIWorkflow(Workflow):
         # First invocation: set brightness to 50%, reboot, check if preserved.
         bh = BrightnessHandler()
         bh.set_brightness_percent(50)
-        time.sleep(5)
+        time.sleep(10)
         # Read multiple times to ensure it's settled
         current = None
-        for _ in range(5):
-            time.sleep(1)
+        for _ in range(10):
+            time.sleep(2)
             current = get_brightness()
             if current is not None:
                 break
         # Let it settle a bit more
-        time.sleep(3)
+        time.sleep(10)
         current = get_brightness()
         max_b = get_max_brightness()
         log(f"[brightness_reboot] first invocation, brightness={current}/{max_b} (set to 50%)")
@@ -706,7 +711,7 @@ class System76PowerCLIWorkflow(Workflow):
         time.sleep(20)
         # Dismiss pop-ups by clicking center.
         try:
-            from ...gui import GuiDriver
+            from harness.gui import GuiDriver
             d = GuiDriver(artifacts=self.artifacts)
             d.click_at((0.5, 0.5))
         except Exception:

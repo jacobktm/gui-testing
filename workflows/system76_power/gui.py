@@ -188,17 +188,27 @@ class System76PowerGUIWorkflow(Workflow):
             self.open_power_settings(os_id)
             import time
             time.sleep(5)
+            from harness.platform import get_flavor_for_os_id
+            flavor = get_flavor_for_os_id(os_id)
+            raw_coords = None
             if os_id == "pop-22.04":
                 raw_coords = Coords.POP22_PROFILES.get(profile)
             elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
                 raw_coords = Coords.UBUNTU_26.get(f"profile_{profile}")
-            else:
+            elif os_id.startswith("pop-24") or os_id.startswith("pop24") or (flavor.name and "24" in flavor.name):
                 raw_coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
-            # Adjust for display aspect ratio.
-            src = COORD_SOURCE.get(os_id, (1920, 1080))
-            from ...gui.coords import get_display_resolution
-            dst = get_display_resolution()
-            coords = adjust_coords(raw_coords, src, dst) if raw_coords else None
+            if raw_coords is None:
+                # Try POP_24 for modern Pop/COSMIC
+                raw_coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
+            if raw_coords is None:
+                raw_coords = Coords.POP22_PROFILES.get(profile)
+                # Adjust for display aspect ratio.
+                from harness.platform import get_flavor_for_os_id
+                flavor = get_flavor_for_os_id(os_id)
+                src = flavor.get_coord_source()
+                from harness.gui.coords import get_display_resolution
+                dst = get_display_resolution()
+                coords = adjust_coords(raw_coords, src, dst) if raw_coords else None
             print(f"[set_power_profile_gui] profile={profile} raw={raw_coords} src={src} dst={dst} adjusted={coords}", file=sys.stderr, flush=True)
             if coords:
                 import sys

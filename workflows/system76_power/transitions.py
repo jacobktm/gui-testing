@@ -148,12 +148,11 @@ class GraphicsTransitionWorkflow(Workflow):
         self.cli_wf = System76PowerCLIWorkflow(artifacts=artifacts)
 
     def _get_open_clicks(self, os_id: str) -> list[tuple[float, float]]:
-        src = COORD_SOURCE.get(os_id, (1920, 1080))
+        flavor = get_flavor_for_os_id(os_id)
+        src = flavor.get_coord_source()
         dst = get_display_resolution()
-        clicks = []
-        clicks.append(adjust_coords(Coords.OPEN, src, dst))
-        if os_id == "pop-22.04":
-            clicks.append(adjust_coords(Coords.POP22_EXTRA, src, dst))
+        clicks = [adjust_coords(c, src, dst) for c in flavor.get_open_clicks()]
+        clicks.extend([adjust_coords(c, src, dst) for c in flavor.get_extra_clicks()])
         return clicks
 
     def validate_graphics(self, target: str, os_id: str = "pop-22.04", item_id: str = "graphics.validate") -> WorkflowResult:

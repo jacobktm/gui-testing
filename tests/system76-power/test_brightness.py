@@ -101,7 +101,7 @@ class TestBrightness:
             print(f"DEBUG   {line}", flush=True)
         print(f"DEBUG stderr={r.stderr.strip()}", flush=True)
 
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.check_brightness_after_reboot()

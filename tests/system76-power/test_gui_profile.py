@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from harness.workflows import System76PowerCLIWorkflow, System76PowerGUIWorkflow
+from workflows.system76_power import System76PowerCLIWorkflow, System76PowerGUIWorkflow
 
 
 def _os_id():
@@ -60,7 +60,7 @@ class TestSystem76PowerGUI:
         assert res.success, res.summary
 
     def test_detect_power_profile(self, artifacts):
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         res = wf.validate_profile("balanced", _os_id(), item_id="gui.power_profile_detect")
         # Just ensure it can detect - don't require specific profile
@@ -79,7 +79,7 @@ class TestSystem76PowerGUI:
         assert res.success, res.summary
 
     def test_gui_transition_performance_to_balanced(self, artifacts):
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         os_id = _os_id()
         res = wf.gui_wf.transition_perf_profile("performance", "balanced", os_id=os_id, item_id="gui.power_profile_transition.performance_to_balanced")
@@ -88,7 +88,7 @@ class TestSystem76PowerGUI:
         assert data.get("verified") is True, f"verification failed: {data}"
 
     def test_gui_transition_balanced_to_battery(self, artifacts):
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         os_id = _os_id()
         res = wf.gui_wf.transition_perf_profile("balanced", "battery", os_id=os_id, item_id="gui.power_profile_transition.balanced_to_battery")
@@ -97,7 +97,7 @@ class TestSystem76PowerGUI:
         assert data.get("verified") is True, f"verification failed: {data}"
 
     def test_gui_transition_battery_to_performance(self, artifacts):
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         os_id = _os_id()
         res = wf.gui_wf.transition_perf_profile("battery", "performance", os_id=os_id, item_id="gui.power_profile_transition.battery_to_performance")
@@ -106,7 +106,7 @@ class TestSystem76PowerGUI:
         assert data.get("verified") is True, f"verification failed: {data}"
 
     def test_gui_transition_performance_to_battery(self, artifacts):
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         os_id = _os_id()
         res = wf.gui_wf.transition_perf_profile("performance", "battery", os_id=os_id, item_id="gui.power_profile_transition.performance_to_battery")
@@ -115,7 +115,7 @@ class TestSystem76PowerGUI:
         assert data.get("verified") is True, f"verification failed: {data}"
 
     def test_gui_transition_battery_to_balanced(self, artifacts):
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         os_id = _os_id()
         res = wf.gui_wf.transition_perf_profile("battery", "balanced", os_id=os_id, item_id="gui.power_profile_transition.battery_to_balanced")
@@ -124,7 +124,7 @@ class TestSystem76PowerGUI:
         assert data.get("verified") is True, f"verification failed: {data}"
 
     def test_gui_transition_balanced_to_performance(self, artifacts):
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         os_id = _os_id()
         res = wf.gui_wf.transition_perf_profile("balanced", "performance", os_id=os_id, item_id="gui.power_profile_transition.balanced_to_performance")

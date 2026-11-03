@@ -3,7 +3,7 @@ from __future__ import annotations
 from harness.brightness import BrightnessHandler
 from handlers.system76_power import System76Power
 
-from ..base import Workflow, WorkflowResult
+from harness.workflows.base import Workflow, WorkflowResult
 
 
 class System76PowerWorkflow(Workflow):

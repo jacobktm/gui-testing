@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from harness.brightness import BrightnessHandler
-from .state import load_switchable_state as _load_switchable, save_switchable_state as _save_switchable
+from harness.power_state import load_switchable_state as _load_switchable, save_switchable_state as _save_switchable
 from handlers.system76_power import System76Power
 from harness.reboot.system import setup_autologin as _setup_autologin
 from harness.llm.prompts import SETTINGS_SELECTION, SIMPLE_SELECTION, SINGLE_WORD_CHOICE
 
-from ...gui import Coords, GuiDriver
-from ...gui.coords import adjust_coords, COORD_SOURCE
-from ..base import Workflow, WorkflowResult
+from harness.gui import Coords, GuiDriver
+from harness.gui.coords import adjust_coords, COORD_SOURCE
+from harness.workflows.base import Workflow, WorkflowResult
 
 # System76-power specific prompts (rendered from templates)
 GRAPHICS_MODE_PROMPT_POP22 = SINGLE_WORD_CHOICE.render(

@@ -1,6 +1,6 @@
 import pytest
 
-from harness.workflows.system76_power import System76PowerCLIWorkflow
+from workflows.system76_power import System76PowerCLIWorkflow
 
 __all__ = ["test_get_perf_profile_returns_valid_profile"]
 

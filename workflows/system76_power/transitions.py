@@ -9,11 +9,11 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from .base import Workflow, WorkflowResult
-from .ui_workflow import UIWorkflow
-from ..gui import Coords
-from ..gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
-from ..llm.prompts import SETTINGS_SELECTION, SIMPLE_SELECTION, SINGLE_WORD_CHOICE
+from harness.workflows.base import Workflow, WorkflowResult
+from harness.workflows.ui_workflow import UIWorkflow
+from harness.gui import Coords
+from harness.gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
+from harness.llm.prompts import SETTINGS_SELECTION, SIMPLE_SELECTION, SINGLE_WORD_CHOICE
 
 GRAPHICS_MODE_PROMPT_POP22 = SINGLE_WORD_CHOICE.render(
     context="Pop!_OS 22.04 graphics settings",
@@ -40,8 +40,8 @@ class ProfileTransitionWorkflow(Workflow):
     def __init__(self, artifacts=None):
         super().__init__(artifacts=artifacts)
         self.ui = UIWorkflow(artifacts=artifacts)
-        from .system76_power.gui import System76PowerGUIWorkflow
-        from .system76_power.cli import System76PowerCLIWorkflow
+        from .gui import System76PowerGUIWorkflow
+        from .cli import System76PowerCLIWorkflow
         self.gui_wf = System76PowerGUIWorkflow(artifacts=artifacts)
         self.cli_wf = System76PowerCLIWorkflow(artifacts=artifacts)
 
@@ -174,8 +174,8 @@ class GraphicsTransitionWorkflow(Workflow):
     def __init__(self, artifacts=None):
         super().__init__(artifacts=artifacts)
         self.ui = UIWorkflow(artifacts=artifacts)
-        from .system76_power.gui import System76PowerGUIWorkflow
-        from .system76_power.cli import System76PowerCLIWorkflow
+        from .gui import System76PowerGUIWorkflow
+        from .cli import System76PowerCLIWorkflow
         self.gui_wf = System76PowerGUIWorkflow(artifacts=artifacts)
         self.cli_wf = System76PowerCLIWorkflow(artifacts=artifacts)
 

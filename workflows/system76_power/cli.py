@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from handlers.system76_power import System76Power
-from .state import load_switchable_state as _load_switchable, save_switchable_state as _save_switchable
+from harness.power_state import load_switchable_state as _load_switchable, save_switchable_state as _save_switchable
 from harness.reboot.system import setup_autologin as _setup_autologin
 
-from ..base import Workflow, WorkflowResult
+from harness.workflows.base import Workflow, WorkflowResult
 
 
 def _reboot_and_wait(handler, graceful: bool = False) -> bool:

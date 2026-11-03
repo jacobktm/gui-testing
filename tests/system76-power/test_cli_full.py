@@ -1,6 +1,6 @@
 import pytest
 
-from harness.workflows import System76PowerCLIWorkflow
+from workflows.system76_power import System76PowerCLIWorkflow
 
 
 @pytest.mark.cli
@@ -39,7 +39,7 @@ class TestSystem76PowerCLIFull:
             pytest.skip("not switchable graphics")
         # Ensure we're in hybrid mode for graphics power control to work
         try:
-            from harness.workflows import System76PowerCLIWorkflow
+            from workflows.system76_power import System76PowerCLIWorkflow
             wf2 = System76PowerCLIWorkflow(artifacts=artifacts)
             wf2.transition_to_hybrid(item_id="cli.graphics_transition.pre_power")
         except Exception:
@@ -95,7 +95,7 @@ class TestSystem76PowerCLIFull:
     @pytest.mark.reboot
     def test_graphics_transition_to_hybrid(self, artifacts):
         """Transition from current mode to hybrid (ensures starting point)."""
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_to_hybrid(item_id="cli.graphics_transition.to_hybrid")
@@ -105,7 +105,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_hybrid_to_integrated(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "integrated", item_id="cli.graphics_transition.hybrid_to_integrated")
@@ -117,7 +117,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_integrated_to_nvidia(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "nvidia", item_id="cli.graphics_transition.integrated_to_nvidia")
@@ -129,7 +129,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_nvidia_to_integrated(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "integrated", item_id="cli.graphics_transition.nvidia_to_integrated")
@@ -141,7 +141,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_integrated_to_hybrid(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "hybrid", item_id="cli.graphics_transition.integrated_to_hybrid")
@@ -153,7 +153,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_hybrid_to_compute(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "compute", item_id="cli.graphics_transition.hybrid_to_compute")
@@ -165,7 +165,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_compute_to_integrated(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "integrated", item_id="cli.graphics_transition.compute_to_integrated")
@@ -177,7 +177,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_integrated_to_compute(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("integrated", "compute", item_id="cli.graphics_transition.integrated_to_compute")
@@ -189,7 +189,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_compute_to_hybrid(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "hybrid", item_id="cli.graphics_transition.compute_to_hybrid")
@@ -201,7 +201,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_hybrid_to_nvidia(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("hybrid", "nvidia", item_id="cli.graphics_transition.hybrid_to_nvidia")
@@ -213,7 +213,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_nvidia_to_compute(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "compute", item_id="cli.graphics_transition.nvidia_to_compute")
@@ -225,7 +225,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_compute_to_nvidia(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("compute", "nvidia", item_id="cli.graphics_transition.compute_to_nvidia")
@@ -237,7 +237,7 @@ class TestSystem76PowerCLIFull:
 
     @pytest.mark.reboot
     def test_graphics_transition_nvidia_to_hybrid(self, artifacts):
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.transition_graphics("nvidia", "hybrid", item_id="cli.graphics_transition.nvidia_to_hybrid")
@@ -249,7 +249,7 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_graphics_reflected_in_extension(self, artifacts):
         """Aggregate: verify panel applet reflected CLI graphics changes."""
-        from harness.workflows import System76PowerCLIWorkflow
+        from workflows.system76_power import System76PowerCLIWorkflow
 
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.verify_cli_graphics_reflected_in_extension()
@@ -271,7 +271,7 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_profile_performance_to_balanced(self, artifacts):
         """Switch to balanced via CLI, verify GUI reflects it."""
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
@@ -286,7 +286,7 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_profile_balanced_to_battery(self, artifacts):
         """Switch to battery via CLI, verify GUI reflects it."""
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
@@ -301,7 +301,7 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_profile_battery_to_performance(self, artifacts):
         """Switch to performance via CLI, verify GUI reflects it."""
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
@@ -316,7 +316,7 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_profile_performance_to_battery(self, artifacts):
         """Switch to battery via CLI, verify GUI reflects it."""
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
@@ -331,7 +331,7 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_profile_battery_to_balanced(self, artifacts):
         """Switch to balanced via CLI, verify GUI reflects it."""
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
@@ -346,7 +346,7 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_profile_balanced_to_performance(self, artifacts):
         """Switch to performance via CLI, verify GUI reflects it."""
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
@@ -361,7 +361,7 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_profile_reflected_in_extension(self, artifacts):
         """Test that any power profile change from CLI is reflected in the extension."""
-        from harness.workflows import ProfileTransitionWorkflow
+        from workflows.system76_power import ProfileTransitionWorkflow
         import os
         os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
         wf = ProfileTransitionWorkflow(artifacts=artifacts)

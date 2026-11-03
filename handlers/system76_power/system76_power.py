@@ -99,15 +99,29 @@ class System76Power:
                 try:
                     stdout, stderr = proc.communicate(timeout=timeout)
                 except subprocess.TimeoutExpired:
-                    # Kill the entire process group.
+                    # Kill the entire process group. Never kill our own process group.
                     try:
-                        os.killpg(proc.pid, signal.SIGKILL)
+                        child_pgid = os.getpgid(proc.pid)
+                        my_pgid = os.getpgid(0)
+                        if child_pgid != my_pgid and child_pgid != os.getsid(0):
+                            try:
+                                os.killpg(child_pgid, signal.SIGKILL)
+                            except (OSError, ProcessLookupError):
+                                pass
+                        else:
+                            try:
+                                proc.kill()
+                            except (OSError, ProcessLookupError):
+                                pass
                     except (OSError, ProcessLookupError):
                         try:
                             proc.kill()
                         except (OSError, ProcessLookupError):
                             pass
-                    stdout, stderr = proc.communicate()
+                    try:
+                        stdout, stderr = proc.communicate(timeout=5)
+                    except Exception:
+                        stdout, stderr = b'', b''
                     raise
 
                 ended = time.time()

@@ -10,10 +10,6 @@ from __future__ import annotations
 from .base import PlatformFlavor, PlatformInfo
 from .registry import get_flavor, get_flavor_for_os_id, register_flavor, list_flavors, detect_platform
 
-# Import flavors to trigger registration
-from . import popos  # noqa
-from . import ubuntu26  # noqa
-
 __all__ = [
     "PlatformFlavor",
     "PlatformInfo",

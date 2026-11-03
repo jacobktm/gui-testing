@@ -401,10 +401,10 @@ class System76PowerCLIWorkflow(Workflow):
                         os_id = "pop-22.04"
                 if os_id == "pop-22.04" or os_id.startswith("pop-22"):
                     try:
-                        from ..system76_power.gui import System76PowerGUIWorkflow
-                        from ...gui import GuiDriver
-                        from ...gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
-                        from ...gui import Coords
+                        from .gui import System76PowerGUIWorkflow
+                        from harness.gui import GuiDriver
+                        from harness.gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
+                        from harness.gui import Coords
                         import time
                         gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
                         # Use the workflow's open method which is more reliable

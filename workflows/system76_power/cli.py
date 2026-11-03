@@ -617,7 +617,16 @@ class System76PowerCLIWorkflow(Workflow):
         # First invocation: set brightness to 50%, reboot, check if preserved.
         bh = BrightnessHandler()
         bh.set_brightness_percent(50)
-        time.sleep(2)
+        time.sleep(5)
+        # Read multiple times to ensure it's settled
+        current = None
+        for _ in range(5):
+            time.sleep(1)
+            current = get_brightness()
+            if current is not None:
+                break
+        # Let it settle a bit more
+        time.sleep(3)
         current = get_brightness()
         max_b = get_max_brightness()
         log(f"[brightness_reboot] first invocation, brightness={current}/{max_b} (set to 50%)")

@@ -11,27 +11,8 @@ from typing import Any
 
 from harness.workflows.base import Workflow, WorkflowResult
 from harness.workflows.ui_workflow import UIWorkflow
-from harness.gui import Coords
-from harness.gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
-from harness.llm.prompts import SETTINGS_SELECTION, SIMPLE_SELECTION, SINGLE_WORD_CHOICE
-
-GRAPHICS_MODE_PROMPT_POP22 = SINGLE_WORD_CHOICE.render(
-    context="Pop!_OS 22.04 graphics settings",
-    item="graphics mode",
-    choices="'integrated', 'hybrid', 'compute', or 'nvidia'",
-)
-POWER_PROFILE_PROMPT_UBUNTU = SETTINGS_SELECTION.render(
-    app_name="power/power mode",
-    settings_section="settings",
-    item_type="power mode",
-    choices="'performance', 'balanced', or 'battery'",
-    extra_instructions="If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'.",
-)
-POWER_PROFILE_PROMPT_DEFAULT = SIMPLE_SELECTION.render(
-    item="power profile",
-    choices="'performance', 'battery', or 'balanced'",
-    extra_instructions="Power Saver is the same as 'battery'.",
-)
+from harness.gui.coords import adjust_coords, get_display_resolution
+from harness.platform import get_flavor_for_os_id
 
 
 class ProfileTransitionWorkflow(Workflow):
@@ -46,16 +27,10 @@ class ProfileTransitionWorkflow(Workflow):
         self.cli_wf = System76PowerCLIWorkflow(artifacts=artifacts)
 
     def _get_open_clicks(self, os_id: str) -> list[tuple[float, float]]:
-        src = COORD_SOURCE.get(os_id, (1920, 1080))
+        flavor = get_flavor_for_os_id(os_id)
+        src = flavor.get_coord_source()
         dst = get_display_resolution()
-        clicks = []
-        clicks.append(adjust_coords(Coords.OPEN, src, dst))
-        if os_id == "pop-22.04":
-            clicks.append(adjust_coords(Coords.POP22_EXTRA, src, dst))
-        elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-            extra = Coords.UBUNTU_26.get("extra_click")
-            if extra:
-                clicks.append(adjust_coords(extra, src, dst))
+        clicks = [adjust_coords(c, src, dst) for c in flavor.get_open_clicks()]
         return clicks
 
     def validate_profile(self, target: str, os_id: str = None, item_id: str = "profile.validate") -> WorkflowResult:
@@ -64,13 +39,9 @@ class ProfileTransitionWorkflow(Workflow):
             import os
             os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
         clicks = self._get_open_clicks(os_id)
-        
-        if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-            expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
-            prompt = POWER_PROFILE_PROMPT_UBUNTU
-        else:
-            expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
-            prompt = POWER_PROFILE_PROMPT_DEFAULT
+        flavor = get_flavor_for_os_id(os_id)
+        expected = flavor.get_profile_expected()
+        prompt = flavor.get_profile_prompt()
 
         res = self.ui.detect_from_ui(
             clicks=clicks,
@@ -86,12 +57,9 @@ class ProfileTransitionWorkflow(Workflow):
         if not res.success:
             return res
         
-        value = (res.data or {}).get("value", "").lower()
-        # Normalize
-        if value == "power saver" or value == "battery saver" or value == "batterysaver" or value == "powersaver":
-            value = "battery"
-        elif value == "high performance":
-            value = "performance"
+        value = (res.data or {}).get("value", "")
+        flavor = get_flavor_for_os_id(os_id) if os_id else get_flavor_for_os_id("pop-24.04")
+        value = flavor.normalize_profile(value)
         
         verified = (value == target.lower())
         return WorkflowResult(
@@ -190,12 +158,13 @@ class GraphicsTransitionWorkflow(Workflow):
 
     def validate_graphics(self, target: str, os_id: str = "pop-22.04", item_id: str = "graphics.validate") -> WorkflowResult:
         """Validate graphics mode via UI - clicks to open, takes screenshot, queries LLM."""
-        if not (os_id == "pop-22.04" or os_id.startswith("pop-22")):
+        flavor = get_flavor_for_os_id(os_id)
+        if not flavor.supports_graphics_switching():
             return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
         
         clicks = self._get_open_clicks(os_id)
-        expected = {"integrated", "hybrid", "compute", "nvidia"}
-        prompt = GRAPHICS_MODE_PROMPT_POP22
+        expected = flavor.get_graphics_expected()
+        prompt = flavor.get_graphics_prompt()
 
         res = self.ui.detect_from_ui(
             clicks=clicks,

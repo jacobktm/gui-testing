@@ -27,11 +27,36 @@ Handles reboot test coordination:
 - Detects reboot tests during collection
 - Prepares autologin/resume before tests
 - Tracks completed tests across reboots
+- Disables idle blanking/locking for the run (re-applied on resumed runs)
 - Restores state after completion
 
 ### pytest.sh
 
-Sets up passwordless sudo for reboot operations and manages autologin.
+Sets up passwordless sudo for reboot operations, manages autologin, and disables
+idle/screen locking before pytest starts.
+
+## Idle and Screen Locking
+
+A long GUI run would otherwise blank the display or lock the screen, which
+breaks screenshot capture and click coordinates. `harness/reboot/idle.py`
+disables this per desktop, using only the backend for the detected desktop:
+
+| Desktop | Mechanism |
+| --- | --- |
+| GNOME (Pop!_OS 22.04, Ubuntu) | `gsettings` keys for idle delay, screen locking, idle dimming and idle suspend. Keys that the installed GNOME does not define are skipped. A `gnome-session-inhibit` process also inhibits idle for the run. |
+| COSMIC (Pop!_OS 24.04+) | `cosmic-idle` config: `~/.config/cosmic/com.system76.CosmicIdle/v1/{screen_off_time,suspend_on_battery_time,suspend_on_ac_time}` set to `None` (RON) to disable the timeout. |
+
+Original values are saved to `~/.local/share/gui-testing/idle_state.json`
+before the first change. Saving is idempotent, so a resumed run after a reboot
+re-applies the disable without overwriting the originals. Cleanup restores the
+saved values, and COSMIC files that did not exist before are deleted.
+
+Run it manually with:
+
+```bash
+python3 -c "from harness.reboot import save_idle_state, disable_idle; save_idle_state(); disable_idle()"
+python3 -c "from harness.reboot import restore_idle; restore_idle()"
+```
 
 ## How It Works
 

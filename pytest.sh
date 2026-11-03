@@ -144,9 +144,6 @@ if $NEEDS_REBOOT_SETUP; then
     # Enable autologin (now passwordless)
     sudo -n python3 -m harness.reboot enable
 
-    # Disable idle/lock/suspend to prevent screen lock during tests
-    python3 -c "from harness.reboot import save_idle_state, disable_idle; save_idle_state(); disable_idle()" 2>/dev/null || true
-
     # Cleanup function: restore autologin + remove sudoers rule
     cleanup() {
         echo ""
@@ -169,9 +166,10 @@ fi
 # shellcheck source=/dev/null
 source "$VENV_DIR/bin/activate"
 
-# Disable idle/lock/suspend for non-reboot runs too
-python3 -c "from harness.reboot import save_idle_state, disable_idle; save_idle_state(); disable_idle()" 2>/dev/null || true
-trap 'python3 -c "from harness.reboot import restore_idle; restore_idle()" 2>/dev/null || true' EXIT
+# Disable idle blanking / screen locking / idle suspend for the duration of the
+# run.  conftest.py repeats this for resumed runs (it is idempotent), so this
+# call mainly ensures the display is already protected during collection.
+python3 -c "from harness.reboot import save_idle_state, disable_idle; s = save_idle_state(); print('idle backend:', s.get('desktop'), '| disabled:', disable_idle())"
 
 if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
     echo "Running all tests (verbose)..."

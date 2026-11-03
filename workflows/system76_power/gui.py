@@ -4,30 +4,10 @@ from harness.brightness import BrightnessHandler
 from harness.power_state import load_switchable_state as _load_switchable, save_switchable_state as _save_switchable
 from handlers.system76_power import System76Power
 from harness.reboot.system import setup_autologin as _setup_autologin
-from harness.llm.prompts import SETTINGS_SELECTION, SIMPLE_SELECTION, SINGLE_WORD_CHOICE
 
-from harness.gui import Coords, GuiDriver
-from harness.gui.coords import adjust_coords, COORD_SOURCE
+from harness.gui import GuiDriver
+from harness.gui.coords import adjust_coords
 from harness.workflows.base import Workflow, WorkflowResult
-
-# System76-power specific prompts (rendered from templates)
-GRAPHICS_MODE_PROMPT_POP22 = SINGLE_WORD_CHOICE.render(
-    context="Pop!_OS 22.04 graphics settings",
-    item="graphics mode",
-    choices="'integrated', 'hybrid', 'compute', or 'nvidia'",
-)
-POWER_PROFILE_PROMPT_UBUNTU = SETTINGS_SELECTION.render(
-    app_name="power/power mode",
-    settings_section="settings",
-    item_type="power mode",
-    choices="'performance', 'balanced', or 'battery'",
-    extra_instructions="If it says 'Power Saver', answer 'battery'. If it says 'Performance', answer 'performance'.",
-)
-POWER_PROFILE_PROMPT_DEFAULT = SIMPLE_SELECTION.render(
-    item="power profile",
-    choices="'performance', 'battery', or 'balanced'",
-    extra_instructions="Power Saver is the same as 'battery'.",
-)
 
 
 def _reboot_and_wait(handler, graceful: bool = False) -> bool:
@@ -45,38 +25,46 @@ class System76PowerGUIWorkflow(Workflow):
         self.driver = GuiDriver(artifacts=artifacts)
         self.brightness = BrightnessHandler()
 
-    def open_power_settings(self, os_id: str) -> WorkflowResult:
-        """Open power settings via adjusted hardcoded click positions."""
+    def open_power_settings(self, os_id: str | None) -> WorkflowResult:
+        """Open the power settings panel using the platform flavor's click layout."""
         import sys
         import time
-        _src = COORD_SOURCE.get(os_id, (1920, 1080))
-        from ...gui.coords import get_display_resolution
-        _dst = get_display_resolution()
+        from harness.gui.coords import get_display_resolution
+        from harness.platform import detect_platform, get_flavor_for_os_id
+
+        if not os_id:
+            os_id = detect_platform().os_id
+        flavor = get_flavor_for_os_id(os_id)
+        src = flavor.get_coord_source()
+        dst = get_display_resolution()
+        click_delay = flavor.get_click_delay()
         try:
-            print(f"[open_power_settings] os_id={os_id} src={_src} dst={_dst} OPEN={adjust_coords(Coords.OPEN, _src, _dst)}", file=sys.stderr, flush=True)
-            # Click the system tray / battery icon.
-            c = adjust_coords(Coords.OPEN, _src, _dst)
-            print(f"[open_power_settings] clicking OPEN at {c}", file=sys.stderr, flush=True)
-            self.driver.click_at(c)
-            if os_id == "pop-22.04":
-                time.sleep(2)
-                extra = getattr(self, "pop22_extra_click", Coords.POP22_EXTRA)
-                ce = adjust_coords(extra, _src, _dst)
-                print(f"[open_power_settings] clicking POP22_EXTRA at {ce}", file=sys.stderr, flush=True)
-                self.driver.click_at(ce)
-            elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                time.sleep(3)
-                extra = getattr(self, "ubuntu_extra_click", Coords.UBUNTU_26.get("extra_click"))
-                if extra:
-                    ce = adjust_coords(extra, _src, _dst)
-                    print(f"[open_power_settings] clicking UBUNTU_EXTRA at {ce}", file=sys.stderr, flush=True)
-                    self.driver.click_at(ce)
-                else:
-                    print(f"[open_power_settings] no ubuntu extra click found", file=sys.stderr, flush=True)
-            else:
-                # Pop 24 (COSMIC): single click on battery icon opens settings.
+            print(
+                f"[open_power_settings] os_id={os_id} flavor={flavor.name} src={src} dst={dst}",
+                file=sys.stderr,
+                flush=True,
+            )
+            # Start from a known state: a click on the desktop dismisses any
+            # menu/panel left open by a previous attempt, so clicking the
+            # indicator below always *opens* it instead of toggling it closed.
+            try:
+                self.driver.click_at((0.5, 0.5))
+                time.sleep(1)
+            except Exception:
                 pass
-            time.sleep(5)
+            flavor.pre_open_hook(self.driver)
+            for click in flavor.get_open_clicks():
+                coords = adjust_coords(click, src, dst)
+                print(f"[open_power_settings] clicking {coords}", file=sys.stderr, flush=True)
+                self.driver.click_at(coords)
+                time.sleep(click_delay)
+            for click in flavor.get_extra_clicks():
+                coords = adjust_coords(click, src, dst)
+                print(f"[open_power_settings] clicking extra {coords}", file=sys.stderr, flush=True)
+                self.driver.click_at(coords)
+                time.sleep(click_delay)
+            flavor.post_click_hook(self.driver)
+            time.sleep(flavor.get_wait_after_clicks())
         except Exception as exc:
             print(f"[open_power_settings] FAILED: {exc}", file=sys.stderr, flush=True)
             return WorkflowResult(
@@ -127,31 +115,34 @@ class System76PowerGUIWorkflow(Workflow):
         # Also verify via GUI detection using UI workflow
         gui_verified = None
         try:
-            from ..ui_workflow import UIWorkflow
-            ui = UIWorkflow(artifacts=self.artifacts)
-            from ..gui import Coords
-            from ..gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
-            src_c = COORD_SOURCE.get(os_id, (1920, 1080))
+            from harness.workflows.ui_workflow import UIWorkflow
+            from harness.gui.coords import adjust_coords, get_display_resolution
+            from harness.platform import get_flavor_for_os_id
+
+            flavor = get_flavor_for_os_id(os_id)
+            src_c = flavor.get_coord_source()
             dst_c = get_display_resolution()
-            clicks = []
-            clicks.append(adjust_coords(Coords.OPEN, src_c, dst_c))
-            if os_id == "pop-22.04":
-                clicks.append(adjust_coords(Coords.POP22_EXTRA, src_c, dst_c))
-            elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                extra = Coords.UBUNTU_26.get("extra_click")
-                if extra:
-                    clicks.append(adjust_coords(extra, src_c, dst_c))
-            if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
-                prompt = POWER_PROFILE_PROMPT_UBUNTU
-            else:
-                expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
-                prompt = POWER_PROFILE_PROMPT_DEFAULT
-            det = ui.detect_from_ui(clicks=clicks, prompt=prompt, expected=expected, os_id=os_id, delay_between_clicks=3.0, wait_after_clicks=8.0, item_id=f"{item_id}.detect", max_attempts=5)
+            clicks = [
+                adjust_coords(click, src_c, dst_c)
+                for click in flavor.get_open_clicks()
+            ]
+            clicks.extend(
+                adjust_coords(click, src_c, dst_c)
+                for click in flavor.get_extra_clicks()
+            )
+            ui = UIWorkflow(artifacts=self.artifacts)
+            det = ui.detect_from_ui(
+                clicks=clicks,
+                prompt=flavor.get_profile_prompt(),
+                expected=flavor.get_profile_expected(),
+                os_id=os_id,
+                delay_between_clicks=flavor.get_click_delay(),
+                wait_after_clicks=flavor.get_wait_after_clicks(),
+                item_id=f"{item_id}.detect",
+                max_attempts=5,
+            )
             if det.success:
-                detected = (det.data or {}).get("value", "").lower()
-                if detected == "power saver":
-                    detected = "battery"
+                detected = flavor.normalize_profile((det.data or {}).get("value", ""))
                 gui_verified = (detected == target.lower())
         except Exception as e:
             print(f"[transition_perf_profile] gui verify failed: {e}", file=sys.stderr, flush=True)
@@ -189,26 +180,12 @@ class System76PowerGUIWorkflow(Workflow):
             import time
             time.sleep(5)
             from harness.platform import get_flavor_for_os_id
+            from harness.gui.coords import get_display_resolution
             flavor = get_flavor_for_os_id(os_id)
-            raw_coords = None
-            if os_id == "pop-22.04":
-                raw_coords = Coords.POP22_PROFILES.get(profile)
-            elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                raw_coords = Coords.UBUNTU_26.get(f"profile_{profile}")
-            elif os_id.startswith("pop-24") or os_id.startswith("pop24") or (flavor.name and "24" in flavor.name):
-                raw_coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
-            if raw_coords is None:
-                # Try POP_24 for modern Pop/COSMIC
-                raw_coords = getattr(Coords, "POP_24", {}).get(f"profile_{profile}")
-            if raw_coords is None:
-                raw_coords = Coords.POP22_PROFILES.get(profile)
-                # Adjust for display aspect ratio.
-                from harness.platform import get_flavor_for_os_id
-                flavor = get_flavor_for_os_id(os_id)
-                src = flavor.get_coord_source()
-                from harness.gui.coords import get_display_resolution
-                dst = get_display_resolution()
-                coords = adjust_coords(raw_coords, src, dst) if raw_coords else None
+            src = flavor.get_coord_source()
+            dst = get_display_resolution()
+            raw_coords = flavor.get_profile_coords(profile)
+            coords = adjust_coords(raw_coords, src, dst) if raw_coords else None
             print(f"[set_power_profile_gui] profile={profile} raw={raw_coords} src={src} dst={dst} adjusted={coords}", file=sys.stderr, flush=True)
             if coords:
                 import sys
@@ -242,16 +219,18 @@ class System76PowerGUIWorkflow(Workflow):
 
     def set_graphics_mode_gui(self, mode: str, os_id: str = "pop-22.04", item_id: str = "gui.graphics_switch") -> WorkflowResult:
         try:
+            import sys
+            from harness.platform import get_flavor_for_os_id
+            from harness.gui.coords import get_display_resolution
             self.open_power_settings(os_id)
-            if os_id == "pop-22.04":
-                raw_coords = Coords.POP22_GRAPHICS.get(mode)
-                if raw_coords:
-                    src = COORD_SOURCE.get(os_id, (1920, 1080))
-                    from ...gui.coords import get_display_resolution
-                    dst = get_display_resolution()
-                    coords = adjust_coords(raw_coords, src, dst)
-                    print(f"[set_graphics_mode_gui] mode={mode} raw={raw_coords} src={src} dst={dst} adjusted={coords}", file=sys.stderr, flush=True)
-                    self.driver.click_at(coords)
+            flavor = get_flavor_for_os_id(os_id)
+            raw_coords = flavor.get_graphics_coords(mode)
+            if raw_coords:
+                src = flavor.get_coord_source()
+                dst = get_display_resolution()
+                coords = adjust_coords(raw_coords, src, dst)
+                print(f"[set_graphics_mode_gui] mode={mode} raw={raw_coords} src={src} dst={dst} adjusted={coords}", file=sys.stderr, flush=True)
+                self.driver.click_at(coords)
             if self.artifacts and item_id:
                 try:
                     self.artifacts.save_text(item_id, "action", f"set graphics {mode}\n", step="set")
@@ -309,7 +288,9 @@ class System76PowerGUIWorkflow(Workflow):
 
     def transition_to_hybrid(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transition.to_hybrid") -> WorkflowResult:
         """Transition from current mode to hybrid via GUI clicks."""
-        if not os_id.startswith("pop-22"):
+        from harness.platform import get_flavor_for_os_id
+
+        if not get_flavor_for_os_id(os_id).supports_graphics_switching():
             if self.artifacts is not None and item_id:
                 try:
                     self.artifacts.record_item(item_id, status="skipped")
@@ -355,7 +336,9 @@ class System76PowerGUIWorkflow(Workflow):
 
         Mirrors the CLI transition_graphics phase machine so it survives reboots.
         """
-        if not os_id.startswith("pop-22"):
+        from harness.platform import get_flavor_for_os_id
+
+        if not get_flavor_for_os_id(os_id).supports_graphics_switching():
             if self.artifacts is not None and item_id:
                 try:
                     self.artifacts.record_item(item_id, status="skipped")
@@ -513,7 +496,9 @@ class System76PowerGUIWorkflow(Workflow):
 
     def transition_graphics_all(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
         """Run all graphics transitions via GUI in the order determined by starting mode."""
-        if not os_id.startswith("pop-22"):
+        from harness.platform import get_flavor_for_os_id
+
+        if not get_flavor_for_os_id(os_id).supports_graphics_switching():
             if self.artifacts is not None and item_id:
                 try:
                     self.artifacts.record_item(item_id, status="skipped")
@@ -574,21 +559,17 @@ class System76PowerGUIWorkflow(Workflow):
     ) -> WorkflowResult:
         """Detect current power profile via UI.
 
-        Ubuntu uses 'Power Saver' label; Pop!_OS uses 'High Performance',
-        'Balanced', 'Battery Saver' or 'Battery'.
+        Prompts and expected labels come from the platform flavor (for example
+        Ubuntu says 'Power Saver' while Pop!_OS says 'Battery Saver').
 
         ``target``, when given, must be matched before detection is accepted;
         otherwise a recognized profile (even the wrong one) ends the loop.
         """
-        if os_id == "ubuntu-26.04":
-            expected = {"performance", "balanced", "battery", "power saver", "powersaver"}
-        else:
-            expected = {"performance", "balanced", "battery", "battery saver", "batterysaver"}
-        # Ubuntu 26.04 uses different labels in COSMIC/GNOME settings
-        if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-            prompt = POWER_PROFILE_PROMPT_UBUNTU
-        else:
-            prompt = POWER_PROFILE_PROMPT_DEFAULT
+        from harness.platform import get_flavor_for_os_id
+
+        flavor = get_flavor_for_os_id(os_id)
+        expected = flavor.get_profile_expected()
+        prompt = flavor.get_profile_prompt()
 
         # Dismiss any open panels first by clicking center (twice).
         try:
@@ -602,38 +583,12 @@ class System76PowerGUIWorkflow(Workflow):
         except Exception:
             pass
         time.sleep(3)
-        # Open power settings fresh - be aggressive on Ubuntu
-        if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-            try:
-                import sys
-                from ...gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
-                from ...gui import Coords
-                src = COORD_SOURCE.get(os_id, (1920, 1200))
-                dst = get_display_resolution()
-                print(f"[detect_power_profile] ubuntu explicit open: src={src} dst={dst}", file=sys.stderr, flush=True)
-                c1 = adjust_coords(Coords.OPEN, src, dst)
-                print(f"[detect_power_profile] clicking OPEN at {c1}", file=sys.stderr, flush=True)
-                self.driver.click_at(c1)
-                time.sleep(4)
-                extra = Coords.UBUNTU_26.get("extra_click")
-                if extra:
-                    c2 = adjust_coords(extra, src, dst)
-                    print(f"[detect_power_profile] clicking extra at {c2}", file=sys.stderr, flush=True)
-                    self.driver.click_at(c2)
-                time.sleep(10)
-            except Exception as e:
-                print(f"[detect_power_profile] ubuntu explicit open failed: {e}", file=sys.stderr, flush=True)
-                try:
-                    self.open_power_settings(os_id)
-                except Exception:
-                    pass
-                time.sleep(12)
-        else:
-            try:
-                self.open_power_settings(os_id)
-            except Exception:
-                pass
-            time.sleep(12)
+        # Open power settings fresh using the platform flavor's layout.
+        try:
+            self.open_power_settings(os_id)
+        except Exception:
+            pass
+        time.sleep(12)
 
         def _normalize(raw: str) -> str:
             """Map LLM responses to the three CLI profile names.
@@ -726,30 +681,9 @@ class System76PowerGUIWorkflow(Workflow):
                     break
             # Otherwise retry after re-opening settings.
             try:
-                if os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
-                    try:
-                        import sys
-                        from ...gui.coords import adjust_coords, COORD_SOURCE, get_display_resolution
-                        from ...gui import Coords
-                        src = COORD_SOURCE.get(os_id, (1920, 1200))
-                        dst = get_display_resolution()
-                        print(f"[detect_power_profile] ubuntu retry open", file=sys.stderr, flush=True)
-                        c1 = adjust_coords(Coords.OPEN, src, dst)
-                        self.driver.click_at(c1)
-                        time.sleep(4)
-                        extra = Coords.UBUNTU_26.get("extra_click")
-                        if extra:
-                            c2 = adjust_coords(extra, src, dst)
-                            self.driver.click_at(c2)
-                        time.sleep(10)
-                    except Exception:
-                        self.open_power_settings(os_id)
-                        import time as _t2b
-                        _t2b.sleep(12)
-                else:
-                    self.open_power_settings(os_id)
-                    import time as _t2b
-                    _t2b.sleep(8)
+                self.open_power_settings(os_id)
+                import time as _t2b
+                _t2b.sleep(8)
             except Exception:
                 pass
             import time as _t2b
@@ -830,7 +764,7 @@ class System76PowerGUIWorkflow(Workflow):
 
     def detect_graphics_mode(
         self,
-        os_id: str = "pop-22.04",
+        os_id: str | None = "pop-22.04",
         item_id: str = "gui.graphics_mode_detect",
         target: str | None = None,
     ) -> WorkflowResult:
@@ -839,14 +773,16 @@ class System76PowerGUIWorkflow(Workflow):
         ``target``, when given, must be matched before detection is accepted;
         otherwise a recognized mode (even the wrong one) ends the loop.
         """
-        expected = {"integrated", "hybrid", "compute", "nvidia"}
-        if os_id == "pop-22.04" or os_id.startswith("pop-22"):
-            prompt = GRAPHICS_MODE_PROMPT_POP22
-        elif os_id == "ubuntu-26.04" or os_id.startswith("ubuntu"):
+        from harness.platform import detect_platform, get_flavor_for_os_id
+
+        if not os_id:
+            os_id = detect_platform().os_id
+        flavor = get_flavor_for_os_id(os_id)
+        if not flavor.supports_graphics_switching():
             return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
-        else:
-            # Pop!_OS 24.04 / COSMIC - no switchable graphics in GUI extension
-            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
+
+        prompt = flavor.get_graphics_prompt()
+        expected = flavor.get_graphics_expected()
 
         try:
             # Dismiss any open panels first by clicking center.

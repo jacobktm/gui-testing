@@ -20,16 +20,16 @@ class Ubuntu26Flavor(PlatformFlavor):
     
     def get_open_clicks(self) -> list[tuple[float, float]]:
         from harness.gui import Coords
-        clicks = [(Coords.OPEN[0], Coords.OPEN[1])]
-        extra = Coords.UBUNTU_26.get("extra_click")
-        if extra:
-            clicks.append((extra[0], extra[1]))
-        return clicks
-    
+        return [(Coords.OPEN[0], Coords.OPEN[1])]
+
     def get_extra_clicks(self) -> list[tuple[float, float]]:
         from harness.gui import Coords
         extra = Coords.UBUNTU_26.get("extra_click")
         return [(extra[0], extra[1])] if extra else []
+
+    def get_profile_coords(self, profile: str) -> tuple[float, float] | None:
+        from harness.gui import Coords
+        return Coords.UBUNTU_26.get(f"profile_{profile}")
     
     def get_profile_prompt(self):
         from harness.llm.prompts import SETTINGS_SELECTION

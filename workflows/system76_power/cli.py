@@ -367,77 +367,32 @@ class System76PowerCLIWorkflow(Workflow):
                     pass
                 target_ok = (current == target)
 
-                # On Pop!_OS 22.04, also verify via GUI that the extension reflects
-                # the new graphics mode (satisfies "CLI changes reflected in extension").
+                # Verify via GUI that the extension reflects the new graphics mode.
+                # Only flavors that expose graphics switching have this UI.
                 gui_verified = None
-                import os
-                os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or ""
-                if not os_id:
+                from harness.platform import detect_platform, get_flavor_for_os_id
+                os_id = detect_platform().os_id
+                flavor = get_flavor_for_os_id(os_id)
+                if flavor.supports_graphics_switching():
                     try:
-                        os_id_parts = {}
-                        with open("/etc/os-release") as f:
-                            for line in f:
-                                if "=" in line:
-                                    key, val = line.strip().split("=", 1)
-                                    os_id_parts[key] = val.strip().strip('"').lower()
-                        os_id = os_id_parts.get("ID", "")
-                        version = os_id_parts.get("VERSION_ID", "")
-                        if version:
-                            os_id = f"{os_id}-{version}"
-                    except Exception:
-                        pass
-                # Treat any Pop!_OS as pop-22.04 style for graphics extension validation
-                if os_id.startswith("pop"):
-                    try:
-                        with open("/etc/os-release") as f:
-                            content = f.read().lower()
-                        if "22.04" in content or "pop-22" in os_id:
-                            os_id = "pop-22.04"
-                        elif "24.04" in content:
-                            os_id = "pop-24.04"
+                        from .gui import System76PowerGUIWorkflow
+                        import time
+                        gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
+                        opened = gui_wf.open_power_settings(os_id)
+                        if not opened.success:
+                            print(f"  [gui_verify] open failed: {opened.summary}", flush=True)
                         else:
-                            os_id = "pop-22.04"
-                    except Exception:
-                        os_id = "pop-22.04"
-                if os_id == "pop-22.04" or os_id.startswith("pop-22"):
-                    try:
-                            from .gui import System76PowerGUIWorkflow
-                            from harness.gui import GuiDriver
-                            from harness.gui.coords import adjust_coords, get_display_resolution
-                            from harness.platform import get_flavor_for_os_id
-                            import time
-                            gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
-                            # Use the workflow's open method which is more reliable
-                            try:
-                                gui_wf.open_power_settings(os_id)
-                                time.sleep(12)
-                            except Exception as e:
-                                print(f"  [gui_verify] open failed: {e}", flush=True)
-                                try:
-                                    driver = GuiDriver(artifacts=self.artifacts)
-                                    flavor = get_flavor_for_os_id(os_id)
-                                    src = flavor.get_coord_source()
-                                    dst = get_display_resolution()
-                                    for c in flavor.get_open_clicks():
-                                        driver.click_at(adjust_coords(c, src, dst))
-                                        time.sleep(2)
-                                    for c in flavor.get_extra_clicks():
-                                        driver.click_at(adjust_coords(c, src, dst))
-                                        time.sleep(2)
-                                    time.sleep(8)
-                                except Exception:
-                                    pass
+                            time.sleep(6)
                             det = gui_wf.detect_graphics_mode(os_id=os_id, target=target)
                             if det.success:
                                 detected = (det.data or {}).get("graphics", "").lower()
                                 gui_verified = (detected == target.lower())
-                            else:
-                                gui_verified = None  # Don't fail the whole test if GUI detection fails
-                            try:
-                                d = GuiDriver(artifacts=self.artifacts)
-                                d.click_at((0.5, 0.5))
-                            except Exception:
-                                pass
+                            # else: leave None so GUI detection is best-effort
+                        try:
+                            from harness.gui import GuiDriver
+                            GuiDriver(artifacts=self.artifacts).click_at((0.5, 0.5))
+                        except Exception:
+                            pass
                     except Exception as e:
                         print(f"  [gui_verify] failed: {e}", flush=True)
                         gui_verified = None
@@ -568,29 +523,30 @@ class System76PowerCLIWorkflow(Workflow):
         if isinstance(state, dict) and state.get("phase") == "rebooting":
             settled = state.get("settled")
             log(f"[brightness_reboot] resumed after reboot, settled={settled}")
-            # Check current profile.
+            # Check current profile (informational only).
             try:
                 prof = handler.get_perf_profile()
                 log(f"[brightness_reboot] current profile after reboot: {prof}")
             except Exception as e:
                 log(f"[brightness_reboot] profile check failed: {e}")
-                # Wait for daemon to settle, reading brightness until it stabilizes.
-                time.sleep(10)
-                readings = []
-                prev = None
-                stable_count = 0
-                for i in range(60):
-                    time.sleep(2)
-                    after = get_brightness()
-                    readings.append(after)
-                    log(f"[brightness_reboot] reading {i}: {after}")
-                    if after is not None and after == prev:
-                        stable_count += 1
-                        if stable_count >= 5:
-                            break
-                    else:
-                        stable_count = 0
-                    prev = after
+
+            # Wait for the daemon to settle, reading brightness until it stabilizes.
+            time.sleep(10)
+            readings = []
+            prev = None
+            stable_count = 0
+            for i in range(60):
+                time.sleep(2)
+                after = get_brightness()
+                readings.append(after)
+                log(f"[brightness_reboot] reading {i}: {after}")
+                if after is not None and after == prev:
+                    stable_count += 1
+                    if stable_count >= 5:
+                        break
+                else:
+                    stable_count = 0
+                prev = after
             after = readings[-1] if readings else get_brightness()
             max_b = get_max_brightness()
             log(f"[brightness_reboot] final after={after} max={max_b} readings={readings}")
@@ -719,23 +675,11 @@ class System76PowerCLIWorkflow(Workflow):
         time.sleep(1)
 
         if os_id is None:
-            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
-            if not os_id or "-" not in os_id:
-                try:
-                    with open("/etc/os-release") as f:
-                        for line in f:
-                            if "=" in line:
-                                key, val = line.strip().split("=", 1)
-                                if key == "ID":
-                                    os_id = val.strip().strip('"').lower()
-                                elif key == "VERSION_ID":
-                                    v = val.strip().strip('"')
-                                    if v:
-                                        os_id = f"{os_id}-{v}"
-                except Exception:
-                    pass
+            from harness.platform import detect_platform
 
-        from ..system76_power.gui import System76PowerGUIWorkflow
+            os_id = os.environ.get("TEST_OS_ID") or detect_platform().os_id
+
+        from .gui import System76PowerGUIWorkflow
         gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
         # GUI detection itself retries up to 5 times until detected == target.
         res = gui_wf.detect_power_profile(os_id=os_id, item_id=f"{item_id}.detect", target=target)

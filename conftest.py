@@ -124,6 +124,17 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    # Keep the screen from blanking/locking for the duration of the run.
+    # Saving is idempotent so a resumed run (fresh process after a reboot)
+    # re-applies the settings without clobbering the user's originals.
+    try:
+        from harness.reboot.idle import disable_idle, save_idle_state
+
+        save_idle_state()
+        disable_idle()
+    except Exception as error:  # never fail a run over this
+        print(f"[idle] setup failed: {type(error).__name__}: {error}", flush=True)
+
     # Cache display geometry early (before any GUI tests run).
     # Force re-detection on resumed runs (after reboot).
     try:
@@ -153,7 +164,7 @@ def pytest_configure(config):
     # Save original graphics mode before tests run (for cleanup restore).
     try:
         from handlers.system76_power import System76Power
-        from harness.workflows.system76_power.state import save_original_graphics_mode_from
+        from harness.power_state import save_original_graphics_mode_from
         h = System76Power()
         save_original_graphics_mode_from(h)
     except Exception:
@@ -316,7 +327,7 @@ def pytest_sessionfinish(session, exitstatus):
     # Restore original graphics mode last thing before final reboot.
     try:
         from handlers.system76_power import System76Power
-        from harness.workflows.system76_power.state import restore_original_graphics_mode
+        from harness.power_state import restore_original_graphics_mode
         h = System76Power()
         if restore_original_graphics_mode(h):
             from harness.reboot.system import reboot, wait_for_boot

@@ -3,6 +3,15 @@ import pytest
 from workflows.system76_power import System76PowerCLIWorkflow
 
 
+def _detected_os_id() -> str:
+    """Return the detected platform id; TEST_OS_ID overrides for simulation."""
+    import os
+
+    from harness.platform import detect_platform
+
+    return os.environ.get("TEST_OS_ID") or detect_platform().os_id
+
+
 @pytest.mark.cli
 class TestSystem76PowerCLIFull:
     def test_power_profiles_can_be_queried_and_set(self, artifacts):
@@ -19,7 +28,7 @@ class TestSystem76PowerCLIFull:
 
     def test_laptop_switchable_graphics_can_be_queried(self, artifacts):
         from handlers.system76_power import System76Power
-        from harness.workflows.system76_power.state import save_switchable_state
+        from harness.power_state import save_switchable_state
         handler = System76Power(artifacts=artifacts)
         result = handler.switchable()
         # Persist so transition tests don't re-query.
@@ -30,7 +39,7 @@ class TestSystem76PowerCLIFull:
         import subprocess
         import os
         from handlers.system76_power import System76Power
-        from harness.workflows.system76_power.state import load_switchable_state
+        from harness.power_state import load_switchable_state
         _h = System76Power(artifacts=artifacts)
         switchable = load_switchable_state()
         if switchable is None:
@@ -274,7 +283,7 @@ class TestSystem76PowerCLIFull:
         from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        os_id = _detected_os_id()
         handler = System76Power(artifacts=artifacts)
         handler.switch_perf_profile("performance")
         time.sleep(15)
@@ -289,7 +298,7 @@ class TestSystem76PowerCLIFull:
         from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        os_id = _detected_os_id()
         handler = System76Power(artifacts=artifacts)
         handler.switch_perf_profile("balanced")
         time.sleep(15)
@@ -304,7 +313,7 @@ class TestSystem76PowerCLIFull:
         from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        os_id = _detected_os_id()
         handler = System76Power(artifacts=artifacts)
         handler.switch_perf_profile("battery")
         time.sleep(15)
@@ -319,7 +328,7 @@ class TestSystem76PowerCLIFull:
         from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        os_id = _detected_os_id()
         handler = System76Power(artifacts=artifacts)
         handler.switch_perf_profile("performance")
         time.sleep(15)
@@ -334,7 +343,7 @@ class TestSystem76PowerCLIFull:
         from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        os_id = _detected_os_id()
         handler = System76Power(artifacts=artifacts)
         handler.switch_perf_profile("battery")
         time.sleep(15)
@@ -349,7 +358,7 @@ class TestSystem76PowerCLIFull:
         from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
         import os, time
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        os_id = _detected_os_id()
         handler = System76Power(artifacts=artifacts)
         handler.switch_perf_profile("balanced")
         time.sleep(15)
@@ -363,7 +372,7 @@ class TestSystem76PowerCLIFull:
         """Test that any power profile change from CLI is reflected in the extension."""
         from workflows.system76_power import ProfileTransitionWorkflow
         import os
-        os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+        os_id = _detected_os_id()
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         res = wf.run_all_cli_validate(os_id=os_id, item_id="cli.profile_reflected")
         if (res.data or {}).get("skipped"):

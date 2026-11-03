@@ -31,13 +31,15 @@ class ProfileTransitionWorkflow(Workflow):
         src = flavor.get_coord_source()
         dst = get_display_resolution()
         clicks = [adjust_coords(c, src, dst) for c in flavor.get_open_clicks()]
+        clicks.extend(adjust_coords(c, src, dst) for c in flavor.get_extra_clicks())
         return clicks
 
     def validate_profile(self, target: str, os_id: str = None, item_id: str = "profile.validate") -> WorkflowResult:
         """Validate power profile via UI - clicks to open, takes screenshot, queries LLM."""
         if os_id is None:
-            import os
-            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+            from harness.platform import detect_platform
+
+            os_id = detect_platform().os_id
         clicks = self._get_open_clicks(os_id)
         flavor = get_flavor_for_os_id(os_id)
         expected = flavor.get_profile_expected()
@@ -48,8 +50,8 @@ class ProfileTransitionWorkflow(Workflow):
             prompt=prompt,
             expected=expected,
             os_id=os_id,
-            delay_between_clicks=3.0,
-            wait_after_clicks=8.0,
+            delay_between_clicks=flavor.get_click_delay(),
+            wait_after_clicks=flavor.get_wait_after_clicks(),
             item_id=item_id,
             max_attempts=5,
         )
@@ -58,7 +60,6 @@ class ProfileTransitionWorkflow(Workflow):
             return res
         
         value = (res.data or {}).get("value", "")
-        flavor = get_flavor_for_os_id(os_id) if os_id else get_flavor_for_os_id("pop-24.04")
         value = flavor.normalize_profile(value)
         
         verified = (value == target.lower())
@@ -72,8 +73,9 @@ class ProfileTransitionWorkflow(Workflow):
     def transition_to(self, target: str, os_id: str = None, via: str = "gui", item_id: str = None) -> WorkflowResult:
         """Single workflow to transition to target profile via GUI or CLI."""
         if os_id is None:
-            import os
-            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+            from harness.platform import detect_platform
+
+            os_id = detect_platform().os_id
         if item_id is None:
             item_id = f"{via}.power_profile_transition.to_{target}"
         
@@ -110,8 +112,9 @@ class ProfileTransitionWorkflow(Workflow):
     def run_all_cli_validate(self, os_id: str = None, item_id: str = "cli.profile_reflected_all") -> WorkflowResult:
         """Run all CLI profile changes and validate reflection via UI workflow."""
         if os_id is None:
-            import os
-            os_id = os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+            from harness.platform import detect_platform
+
+            os_id = detect_platform().os_id
         from handlers.system76_power import System76Power
         handler = System76Power()
         handler.switch_perf_profile("performance")

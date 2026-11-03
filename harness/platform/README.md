@@ -53,11 +53,18 @@ To remove support for an old version:
 
 Flavors can override:
 - `get_open_clicks()` - Clicks to open settings
+- `get_extra_clicks()` - Additional clicks (e.g. a submenu) after opening
+- `get_profile_coords(profile)` / `get_graphics_coords(mode)` - Normalized coordinates for a settings entry
 - `get_coord_source()` - Source resolution for coordinates
 - `get_profile_prompt()` / `get_profile_expected()` / `normalize_profile()` - Profile detection
 - `get_graphics_prompt()` / `get_graphics_expected()` / `supports_graphics_switching()` - Graphics
 - `get_click_delay()` / `get_wait_after_clicks()` - Timing
 - `pre_open_hook()` / `post_click_hook()` - Custom hooks
+
+`get_open_clicks()` must return only the click(s) that open the settings
+surface; anything that expands a menu afterwards belongs in
+`get_extra_clicks()`.  Workflows concatenate the two lists, so a click listed
+in both is performed twice.
 
 ## Usage
 

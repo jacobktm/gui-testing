@@ -75,6 +75,19 @@ class PlatformFlavor:
     def get_extra_clicks(self) -> list[tuple[float, float]]:
         """Additional clicks after opening."""
         return []
+
+    def get_profile_coords(self, profile: str) -> tuple[float, float] | None:
+        """Coordinates of a power profile entry once settings are open.
+
+        Flavors that can place their profile rows predictably return the
+        coordinate here; returning ``None`` means the caller should fall back
+        to vision-based detection.
+        """
+        return None
+
+    def get_graphics_coords(self, mode: str) -> tuple[float, float] | None:
+        """Coordinates of a graphics mode entry once settings are open."""
+        return None
     
     # Prompts
     def get_profile_prompt(self):

@@ -6,8 +6,10 @@ from workflows.system76_power import System76PowerCLIWorkflow, System76PowerGUIW
 
 
 def _os_id():
-    # Could be detected from system; default for manual runs
-    return os.environ.get("TEST_OS_ID") or os.environ.get("OS_ID") or "pop-24.04"
+    """Return the detected platform id; TEST_OS_ID overrides for simulation."""
+    from harness.platform import detect_platform
+
+    return os.environ.get("TEST_OS_ID") or detect_platform().os_id
 
 
 @pytest.mark.gui

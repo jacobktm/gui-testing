@@ -190,21 +190,16 @@ class TestSystem76PowerCLIFull:
         [pytest.param(s, t, id=f"{s}_to_{t}") for s, t in CLI_PROFILE_TRANSITIONS],
     )
     def test_cli_profile_reflected(self, artifacts, source, target):
-        """Switch profile via CLI, verify the GUI extension shows it."""
-        import time
+        """Switch profile via CLI, verify the GUI extension shows it.
 
-        from handlers.system76_power import System76Power
-        from workflows.system76_power import ProfileTransitionWorkflow
-
-        os_id = _detected_os_id()
-        handler = System76Power(artifacts=artifacts)
-        handler.switch_perf_profile(source)
-        time.sleep(15)
-        handler.switch_perf_profile(target)
-        time.sleep(25)
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        res = wf.validate_profile(
-            target, os_id, item_id=f"cli.profile_reflected.{source}_to_{target}"
+        The workflow performs both switches, the deliberate center-screen
+        dismissal click (always safe here; clears lingering profile-change
+        pop-ups), and persists the outcome for the aggregate test below.
+        """
+        wf = System76PowerCLIWorkflow(artifacts=artifacts)
+        res = wf.verify_cli_profile_reflected(
+            source, target, os_id=_detected_os_id(),
+            item_id=f"cli.profile_reflected.{source}_to_{target}",
         )
         assert res.success, res.summary
 

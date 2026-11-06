@@ -368,18 +368,27 @@ class System76PowerCLIWorkflow(Workflow, GraphicsTransitionMixin):
             return WorkflowResult(success=False, item_id=item_id, summary="reboot did not happen", data={"ok": False})
         return WorkflowResult(success=True, item_id=item_id, summary="brightness=" + str(current) + ", rebooting")
 
-    def verify_cli_profile_reflected_in_extension(self, target: str, os_id: str | None = None, item_id: str = "cli.profile_reflected") -> WorkflowResult:
-        """Switch profile via CLI, verify the GUI extension reflects it."""
-        import os
+    def verify_cli_profile_reflected(self, source: str, target: str, os_id: str | None = None, item_id: str = "cli.profile_reflected") -> WorkflowResult:
+        """Switch profile via CLI (source -> target), verify the GUI reflects it.
+
+        The center-screen dismissal click after the switch is deliberate:
+        a profile-change toast may still cover the panel (ESC does not work
+        on COSMIC; the center click is always safe for this flow).  The
+        outcome is persisted (kind="profile_reflected") so
+        verify_all_cli_profiles_reflected_in_extension can aggregate it.
+        """
+        import time
+
         handler = System76Power(
             test_id="system76_power.cli.profile",
             item_id=item_id,
             phase="action",
             artifacts=self.artifacts,
         )
+        handler.switch_perf_profile(source)
+        time.sleep(15)
         handler.switch_perf_profile(target)
-        import time
-        time.sleep(20)
+        time.sleep(25)
         # Dismiss pop-ups by clicking center.
         try:
             from harness.gui import GuiDriver
@@ -389,33 +398,63 @@ class System76PowerCLIWorkflow(Workflow, GraphicsTransitionMixin):
             pass
         time.sleep(1)
 
-        if os_id is None:
-            from harness.platform import detect_platform
-
-            os_id = os.environ.get("TEST_OS_ID") or detect_platform().os_id
-
-        from .gui import System76PowerGUIWorkflow
-        gui_wf = System76PowerGUIWorkflow(artifacts=self.artifacts)
-        # GUI detection itself retries up to 5 times until detected == target.
-        res = gui_wf.detect_power_profile(os_id=os_id, item_id=f"{item_id}.detect", target=target)
-        if not res.success:
-            return WorkflowResult(success=False, item_id=item_id, summary=f"detect failed: {res.summary}", data=res.data)
-        detected = (res.data or {}).get("profile", "").lower()
-        import sys
-        print(f"[verify_cli_profile] target={target} detected={detected}", file=sys.stderr, flush=True)
-        verified = (detected == target.lower())
-        # Persist result for aggregation.
+        from .transitions import ProfileTransitionWorkflow
+        res = ProfileTransitionWorkflow(artifacts=self.artifacts).validate_profile(
+            target, os_id, item_id=item_id,
+        )
         self.persist_state(item_id, "state", {
             "kind": "profile_reflected",
             "target": target,
-            "detected": detected,
-            "verified": verified,
+            "verified": bool(res.success),
+            "summary": res.summary,
         })
+        return res
+
+    def verify_all_cli_profiles_reflected_in_extension(self, item_id: str = "cli.profile_reflected") -> WorkflowResult:
+        """Aggregate: check that all CLI power profile changes were reflected in extension.
+
+        Does NOT run any transitions itself.  Checks persisted state written
+        by verify_cli_profile_reflected under ``{item_id}.{s}_to_{t}`` for
+        every edge of the (static) profile circuit — chain rotation reorders
+        but never changes the edge set.  Each target profile must have been
+        verified by at least one transition.
+        """
+        from .transitions import PERF_PROFILE_CIRCUIT
+
+        target_verified = {"performance": False, "balanced": False, "battery": False}
+        target_details = {"performance": [], "balanced": [], "battery": []}
+        any_ran = False
+        for source, target in PERF_PROFILE_CIRCUIT:
+            trans_name = f"{source}_to_{target}"
+            state = self.load_persisted_state(f"{item_id}.{trans_name}", phase="state")
+            verified = None
+            if isinstance(state, dict) and state.get("kind") == "profile_reflected":
+                verified = state.get("verified")
+            if verified is not None:
+                any_ran = True
+                if verified:
+                    target_verified[target] = True
+                target_details[target].append({"transition": trans_name, "verified": verified})
+
+        if not any_ran:
+            return WorkflowResult(
+                success=True,
+                item_id=item_id,
+                summary="no profile verification data (transitions not run)",
+                data={"target_verified": target_verified, "skipped": True},
+            )
+
+        all_ok = all(target_verified.values())
+        results = [{"target": t, "verified": v, "details": target_details[t]} for t, v in target_verified.items()]
+        failed = [t for t, v in target_verified.items() if not v]
+        summary = f"profile_reflected: {sum(target_verified.values())}/3 profiles verified"
+        if failed:
+            summary += f" (missing: {', '.join(failed)})"
         return WorkflowResult(
-            success=verified,
+            success=all_ok,
             item_id=item_id,
-            summary=f"cli={target} gui={detected} verified={verified}",
-            data={"target": target, "detected": detected, "verified": verified},
+            summary=summary,
+            data={"results": results, "target_verified": target_verified},
         )
 
     def get_graphics_power(self, item_id: str = "cli.graphics_power") -> WorkflowResult:

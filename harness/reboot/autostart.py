@@ -102,7 +102,12 @@ def build_resume_script(
 
     user_setup = ""
     if username:
-        user_setup = """
+        # f-string: {shlex.quote(username)} is substituted and the {{ }}
+        # escapes render as single awk/shell braces (this block was long a
+        # plain string, which emitted the placeholders verbatim and made the
+        # unquoted parens in {shlex.quote(...)} a dash parse error that
+        # killed every resumed boot before pytest could restart).
+        user_setup = f"""
 # Best-effort: wait for the graphical session that autologin started.
 SESSION_ID=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u={shlex.quote(username)} '$3 == u {{ print $1; exit }}')
 if [ -n "$SESSION_ID" ]; then

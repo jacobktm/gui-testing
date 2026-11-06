@@ -389,11 +389,11 @@ class System76PowerCLIWorkflow(Workflow, GraphicsTransitionMixin):
         time.sleep(15)
         handler.switch_perf_profile(target)
         time.sleep(25)
-        # Dismiss pop-ups by clicking center.
+        # Dismiss lingering profile-change pop-ups with the app's
+        # always-safe double center click (logged by dismiss_menus).
         try:
-            from harness.gui import GuiDriver
-            d = GuiDriver(artifacts=self.artifacts)
-            d.click_at((0.5, 0.5))
+            from .gui import System76PowerGUIWorkflow
+            System76PowerGUIWorkflow(artifacts=self.artifacts).dismiss_menus()
         except Exception:
             pass
         time.sleep(1)

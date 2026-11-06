@@ -50,14 +50,10 @@ class System76PowerGUIWorkflow(Workflow, GraphicsTransitionMixin):
                 file=sys.stderr,
                 flush=True,
             )
-            # Start from a known state: a click on the desktop dismisses any
+            # Start from a known state: two center clicks dismiss any
             # menu/panel left open by a previous attempt, so clicking the
             # indicator below always *opens* it instead of toggling it closed.
-            try:
-                self.driver.click_at((0.5, 0.5))
-                time.sleep(1)
-            except Exception:
-                pass
+            self.pre_open_clear()
             flavor.pre_open_hook(self.driver)
             for click in flavor.get_open_clicks():
                 coords = adjust_coords(click, src, dst)
@@ -163,9 +159,12 @@ class System76PowerGUIWorkflow(Workflow, GraphicsTransitionMixin):
         )
 
     def dismiss_menus(self):
-        # Click at center to dismiss lingering dialogs/pop-ups.
-        # ESC doesn't work on COSMIC; center click always works.
+        # Two clicks at center to dismiss lingering dialogs/pop-ups.
+        # ESC doesn't work on COSMIC; center clicks always work.
         # Do NOT click at (0.1, 0.1) — that activates UI elements.
+        # Logged so hardware runs can prove the clicks actually happen.
+        import sys
+        print("[dismiss] 2x click (0.5, 0.5)", file=sys.stderr, flush=True)
         try:
             self.driver.click_at((0.5, 0.5))
         except Exception:
@@ -176,6 +175,25 @@ class System76PowerGUIWorkflow(Workflow, GraphicsTransitionMixin):
             self.driver.click_at((0.5, 0.5))
         except Exception:
             pass
+
+    def pre_open_clear(self):
+        """Clear lingering menus/panels/notifications BEFORE an open click.
+
+        An open click on a top-bar indicator TOGGLES the panel, so a panel
+        left open by a previous step makes the next "open" click close it
+        and every later screenshot shows the bare desktop.  Clearing first
+        makes the open deterministic: two center clicks, then a short wait.
+
+        This is deliberately specific to system76-power testing: the screen
+        center is inert desktop on the supported desktops, so two left clicks
+        there are always safe.  Other applications cannot assume that, so
+        the harness keeps pre-open clearing an opt-in hook, not built-in.
+        """
+        import sys
+        import time
+        print("[pre_open_clear] clearing UI before open: 2x click (0.5, 0.5) + 3s", file=sys.stderr, flush=True)
+        self.dismiss_menus()
+        time.sleep(3)
 
 
     def set_power_profile_gui(self, profile: str, os_id: str, item_id: str = "gui.power_profile_switch") -> WorkflowResult:
@@ -543,15 +561,7 @@ class System76PowerGUIWorkflow(Workflow, GraphicsTransitionMixin):
         expected = flavor.get_graphics_expected()
 
         try:
-            # Dismiss any open panels first by clicking center.
-            try:
-                self.driver.go_to((0.5, 0.5))
-                self.driver.click_at((0.5, 0.5))
-            except Exception:
-                pass
-            import time as _t0
-            _t0.sleep(1)
-            # Open power settings fresh.
+            # Open power settings fresh (open_power_settings clears first).
             try:
                 self.open_power_settings(os_id)
             except Exception:

@@ -27,9 +27,22 @@ class UIWorkflow(Workflow):
         clicks: list[tuple[float, float]],
         delay_between: float = 2.0,
         item_id: str | None = None,
+        pre_open=None,
     ) -> WorkflowResult:
-        """Click through a list of coordinates to open UI elements."""
+        """Click through a list of coordinates to open UI elements.
+
+        ``pre_open``: optional caller-supplied callable run before the click
+        sequence — apps use it to clear lingering menus so an open-toggle
+        click always opens.  The harness deliberately has no opinion about
+        what is safe to click elsewhere on the screen; the policy belongs
+        to the application workflow.
+        """
         try:
+            if pre_open is not None:
+                try:
+                    pre_open()
+                except Exception as e:
+                    print(f"[open_ui_elements] pre_open hook failed: {e}", flush=True)
             for i, coords in enumerate(clicks):
                 self.driver.click_at(coords)
                 if i < len(clicks) - 1:
@@ -58,8 +71,13 @@ class UIWorkflow(Workflow):
         wait_after_clicks: float = 5.0,
         item_id: str = None,
         max_attempts: int = 5,
+        pre_open=None,
     ) -> WorkflowResult:
-        """Chain: click UI elements -> take screenshot -> query LLM."""
+        """Chain: click UI elements -> take screenshot -> query LLM.
+
+        ``pre_open`` is passed through to :meth:`open_ui_elements` on every
+        attempt (app-specific clearing policy; see there).
+        """
         from ..screenshots import capture, crop_active_display
         from ..detection import parse_detection, DetectionParseError
         from pathlib import Path
@@ -71,7 +89,7 @@ class UIWorkflow(Workflow):
 
         for attempt in range(max_attempts):
             # Open UI elements
-            res = self.open_ui_elements(clicks, delay_between_clicks, item_id=f"{item_id}.open_{attempt}")
+            res = self.open_ui_elements(clicks, delay_between_clicks, item_id=f"{item_id}.open_{attempt}", pre_open=pre_open)
             if not res.success:
                 time.sleep(2)
                 continue

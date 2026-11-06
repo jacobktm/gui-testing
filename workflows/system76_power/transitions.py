@@ -82,6 +82,9 @@ class ProfileTransitionWorkflow(Workflow):
             wait_after_clicks=flavor.get_wait_after_clicks(),
             item_id=item_id,
             max_attempts=5,
+            # App-specific: two center clicks before every open attempt so a
+            # lingering open panel can never turn an open click into a close.
+            pre_open=self.gui_wf.pre_open_clear,
         )
         
         if not res.success:

@@ -1,29 +1,46 @@
-"""Command line helper for reboot-aware test setup.
+"""Command line entry point for reboot-aware test setup.
 
-Usage::
+In production the only way this runs as root is through the root-owned wrapper
+that ``pytest.sh`` installs at ``/usr/local/libexec/gui-testing-privileged``
+(see :mod:`harness.reboot.helper`).  Invoke that wrapper, not this module, for
+anything privileged::
 
-    python -m harness.reboot status     # show detected desktop/user/state
-    python -m harness.reboot enable     # enable autologin + resume unit
-    python -m harness.reboot restore    # restore autologin + remove unit
-    python -m harness.reboot cleanup    # remove passwordless sudoers rule
+    sudo -n /usr/local/libexec/gui-testing-privileged status
+    sudo -n /usr/local/libexec/gui-testing-privileged enable
+    sudo -n /usr/local/libexec/gui-testing-privileged restore
+    sudo -n /usr/local/libexec/gui-testing-privileged cleanup
 
-Useful when a run was interrupted after it enabled autologin.
+``python -m harness.reboot`` remains handy unprivileged (``status``) and when
+already running as root, e.g. for manual recovery of an interrupted run.
 """
 
 from __future__ import annotations
 
 import argparse
-import ctypes
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+from . import finish_reboot, helper
 from .autostart import install_resume_unit, remove_resume_unit, unit_path_for
 from .session import AUTOLOGIN_STATE, AutologinManager, detect_gui_user, detect_session
 
-SUDOERS_FILE = Path("/etc/sudoers.d/gui-testing")
+SUDOERS_FILE = helper.SUDOERS_FILE
+
+# Privileged primitives implemented in :mod:`harness.reboot.helper`.
+SERVER_ACTIONS = helper.SERVER_ACTIONS
+ALL_ACTIONS = (
+    "status",
+    "enable",
+    "restore",
+    "cleanup",
+    "cleanup-all",
+    "force-restore",
+    "recover",
+    *SERVER_ACTIONS,
+)
 
 
 def _status(username: str | None) -> dict[str, object]:
@@ -43,19 +60,26 @@ def _status(username: str | None) -> dict[str, object]:
 
 
 def _cmd_cleanup(username: str | None) -> int:
-    """Remove the passwordless sudoers rule."""
-    if SUDOERS_FILE.exists():
+    """Remove the passwordless sudoers rule.
+
+    The helper runs as root, so it can unlink the file itself.  The rule is only
+    ever *removed* — never written — so a run can never widen its own grant.
+    """
+    if not SUDOERS_FILE.exists():
+        return 0
+    if os.geteuid() == 0:
         try:
-            subprocess.run(
-                ["sudo", "-n", "rm", "-f", str(SUDOERS_FILE)],
-                capture_output=True, text=True, timeout=10,
-            )
-            if not SUDOERS_FILE.exists():
-                print(f"Removed {SUDOERS_FILE}")
-                return 0
-        except (OSError, subprocess.SubprocessError):
-            pass
-    # Fallback: try without -n (interactive)
+            SUDOERS_FILE.unlink()
+            print(f"Removed {SUDOERS_FILE}")
+            return 0
+        except OSError as exc:
+            print(f"Failed to remove {SUDOERS_FILE}: {exc}", file=sys.stderr)
+            return 1
+    if helper.priv_cleanup_sudoers():
+        print(f"Removed {SUDOERS_FILE}")
+        return 0
+    # No passwordless grant left (that is the normal state once cleanup has
+    # run): fall back to the operator, who can authorize interactively.
     try:
         result = subprocess.run(
             ["sudo", "rm", "-f", str(SUDOERS_FILE)],
@@ -72,60 +96,66 @@ def _cmd_cleanup(username: str | None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m harness.reboot")
-    parser.add_argument("action", choices=("status", "enable", "restore", "cleanup", "cleanup-all", "force-restore", "reboot"))
+    parser = argparse.ArgumentParser(prog="gui-testing-privileged")
+    parser.add_argument("action", choices=ALL_ACTIONS)
+    parser.add_argument(
+        "args",
+        nargs="*",
+        metavar="ARG",
+        help="argument for read/write/remove/sysrq (payload for write goes on stdin)",
+    )
     parser.add_argument("--user", help="GUI user (defaults to the detected session user)")
     parser.add_argument("--run-dir", help="artifact run directory for the resume unit")
     parser.add_argument("--workdir", help="working directory for the resumed pytest run")
-    args = parser.parse_args(argv)
+    parsed = parser.parse_args(argv)
+    action, extra = parsed.action, parsed.args
 
-    session = detect_session(args.user)
-    if args.action == "reboot":
-        # Direct kernel reboot(2) syscall via ctypes.  Runs as root under
-        # sudo (the sudoers rule whitelists this module); the syscall either
-        # reboots the machine immediately or fails loudly.
-        os.sync()
-        libc = ctypes.CDLL("libc.so.6", use_errno=True)
-        rc = libc.reboot(ctypes.c_uint(0x01234567))  # RB_AUTOBOOT
-        if rc != 0:
-            errno = ctypes.get_errno()
-            print(f"reboot syscall failed: errno={errno} ({os.strerror(errno)})",
-                  file=sys.stderr, flush=True)
-            sys.stdout.flush()
-            return 1
-        # If the syscall succeeded, the kernel is already rebooting and this
-        # process dies before reaching this point.
-        return 0
+    if action in SERVER_ACTIONS:
+        if action not in ("reboot", "reboot-graceful") and not extra:
+            print(f"{action} requires an argument", file=sys.stderr, flush=True)
+            return 2
+        rc, output = helper.dispatch(action, extra)
+        if output:
+            print(output, end="" if output.endswith("\n") else "\n", flush=True)
+        return rc
 
-    if args.action == "status":
+    if action == "recover":
+        # Boot-time repair path (recovery unit calls ``$HELPER recover``).
+        # Detects the user itself; must not need a GUI session to exist.
+        ok = finish_reboot(username=parsed.user)
+        print(f"recover: {'done' if ok else 'incomplete (machine may need attention)'}", flush=True)
+        return 0 if ok else 1
+
+    session = detect_session(parsed.user)
+
+    if action == "status":
         print(json.dumps(_status(session.username), indent=2))
         return 0
 
-    if args.action == "enable":
+    if action == "enable":
         result = AutologinManager(session).enable()
         print(f"autologin: {'enabled' if result.enabled else 'failed'} ({result.path or result.reason})")
-        if args.run_dir:
+        if parsed.run_dir:
             plan = install_resume_unit(
-                Path(args.run_dir),
+                Path(parsed.run_dir),
                 username=session.username,
-                workdir=args.workdir,
+                workdir=parsed.workdir,
             )
             print(f"resume unit: {'installed' if plan.installed else 'failed'} ({plan.unit_path or plan.reason})")
         return 0 if result.enabled else 1
 
-    if args.action == "force-restore":
+    if action == "force-restore":
         from .session import force_restore_autologin
         restored = force_restore_autologin()
         print(f"force restore: {restored}")
         return 0 if restored else 1
 
-    if args.action == "cleanup":
+    if action == "cleanup":
         return _cmd_cleanup(session.username)
 
-    if args.action == "cleanup-all":
+    if action == "cleanup-all":
         # Remove sudoers, resume unit, and restore autologin.
         _cmd_cleanup(session.username)
-        from .autostart import remove_resume_unit
         remove_resume_unit(username=session.username)
         restored = AutologinManager(session).restore()
         if not restored:

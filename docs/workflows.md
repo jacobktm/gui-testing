@@ -65,23 +65,6 @@ Click through a sequence of coordinates to open UI elements.
 result = ui.open_ui_elements([(0.1, 0.1), (0.2, 0.2)], delay_between=3.0)
 ```
 
-**`take_screenshot(os_id=None, item_id=None, out_dir="/tmp/opencode/gui")`**
-Take a screenshot.
-
-```python
-result = ui.take_screenshot()
-path = result.data["path"]
-```
-
-**`query_llm(prompt, image_path, expected=None, item_id=None)`**
-Query LLM with an image and optional expected values for parsing.
-
-```python
-result = ui.query_llm(prompt, image_path, expected={"on", "off"})
-if result.success:
-    value = result.data["value"]
-```
-
 **`detect_from_ui(clicks, prompt, expected, os_id=None, delay_between_clicks=2.0, wait_after_clicks=5.0, item_id=None, max_attempts=5)`**
 Full chain: click UI elements → wait → screenshot → crop → query LLM. With retries.
 
@@ -110,6 +93,13 @@ CLI-focused operations:
 - `query_profile()` - Query and record profile
 - `set_profile()` / profile transitions via CLI
 - `check_brightness_after_reboot()` - Verify brightness preserved across reboot
+- `transition_graphics(source, target)` - Switch graphics mode, reboot, then
+  verify. On flavors where `supports_graphics_switching()` is true (Pop!_OS
+  22.04), the transition must *also* be visually confirmed: the panel applet
+  is opened and the mode read back from a screenshot
+  (`_gui_verify_graphics_mode`). Any visual failure (open, capture, or a
+  mismatch) fails the transition — `gui_verified=None` only means the flavor
+  has no such UI. Detection screenshots land under `<item_id>.gui`.
 
 ### System76PowerGUIWorkflow
 
@@ -120,21 +110,64 @@ GUI-focused operations using vision:
 
 ### ProfileTransitionWorkflow
 
-High-level orchestration for power profile transitions:
-- Works with both GUI and CLI
-- Validates state via UI
-- Handles different desktop environments
+UI validation of power profiles (clicks → screenshot → LLM):
+- `validate_profile(target, os_id, item_id)` — open the panel, detect the
+  selected profile, and check it equals *target*
+- exposes `gui_wf` / `ui` so tests can drive the GUI workflow directly
 
 ```python
 from workflows.system76_power import ProfileTransitionWorkflow
 
 wf = ProfileTransitionWorkflow(artifacts=artifacts)
-result = wf.transition_to("balanced", os_id="pop-24.04", via="gui")
+result = wf.validate_profile("balanced", os_id="pop-24.04")
 ```
 
-### GraphicsTransitionWorkflow
+### Graphics transitions — one shared phase machine
 
-Similar for graphics mode transitions (Pop!_OS specific).
+CLI and GUI graphics transitions run through the *same* reboot-aware phase
+machine: `GraphicsTransitionMixin` in
+`workflows/system76_power/graphics_transitions.py` (`GRAPHICS_CHAIN_ORDER`
+is a **closed** circuit over all 12 directed edges — every mode's out-degree
+and in-degree match, the walk returns to its start). Because it is closed,
+`get_graphics_chain()` **rotates** it at collection to start from whatever
+mode the machine is actually in — no priming `to_hybrid` test (and its extra
+reboot) is needed. The rotation is persisted
+(`~/.local/share/gui-testing/graphics_chain.json`) and reused on resumed
+boots: re-rotating mid-run would move the edge whose reboot is in flight off
+the front of the chain. The drivers differ only in two hooks: how the mode is
+switched (`system76-power` vs panel clicks) and how the desktop is visually
+verified. Phases (`start` → `rebooting` → `done`) are persisted per `item_id`,
+so a test resumes on the boot after the reboot and idempotently replays
+completed edges.
+
+**Reboot path after a mode switch** (`_reboot_after_switch` hook): the CLI
+(default) settles 10 s (30 s for `integrated`, which powers the dGPU off),
+enables autologin, and issues the scripted reboot chain. Pop!_OS 22.04 *GUI*
+transitions override this: the shell modal that the extension raises after a
+mode change performs the reboot itself — the harness waits ≥ 90 s for the
+asynchronous switch to finish, then activates the modal's "Reboot Now" button
+with **Tab, Tab, Enter** (hardware-verified; no coordinates needed). Forcing
+`reboot -f` while the switch is still in flight corrupts the system, and the
+modal cannot fire before the system says it is ready. The current boot ID is
+marked before the keys go out, so `wait_for_boot` confirms the new boot
+whoever initiated the reboot; if the modal never produces one, the scripted
+reboot path takes over as a fallback.
+
+Tests are parametrized over the (rotated) chain (one test per edge, in chain
+order):
+
+- CLI: `test_graphics_transition[source_to_target]` keeps **per-transition**
+  item ids (`cli.graphics_transition.<s>_to_<t>`).
+- GUI: `test_gui_graphics_transition[<s>_to_<t>]` deliberately shares one
+  item id (`gui.graphics_transitions`) whose state document accumulates all
+  twelve results — the pre-parametrization scheme; don't mix the two.
+- Power-profile transitions use the same idea with a closed 6-edge circuit
+  over the three profiles (`PERF_PROFILE_CIRCUIT` + `get_perf_profile_chain()`
+  rotated to the current profile). Profile switches never reboot, so nothing
+  is persisted — each transition sets/verifies its *target*, so a
+  mid-run source mismatch is harmless.
+- Flavor gating is capability-based (`supports_graphics_switching()`), never
+  `os_id.startswith(...)`.
 
 ## State Persistence
 

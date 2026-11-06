@@ -1,29 +1,35 @@
 from __future__ import annotations
 
 from harness.brightness import BrightnessHandler
-from harness.power_state import load_switchable_state as _load_switchable, save_switchable_state as _save_switchable
 from handlers.system76_power import System76Power
-from harness.reboot.system import setup_autologin as _setup_autologin
 
 from harness.gui import GuiDriver
 from harness.gui.coords import adjust_coords
 from harness.workflows.base import Workflow, WorkflowResult
 
+from .graphics_transitions import GraphicsTransitionMixin
+
 
 def _reboot_and_wait(handler, graceful: bool = False) -> bool:
-    """Reboot and wait for the system to come back (reboot-aware resume)."""
-    from harness.reboot.system import reboot, wait_for_boot
+    """Reboot and wait (kept as a module-level name for test patchability)."""
+    from .util import reboot_and_wait
 
-    run_dir = handler.artifacts.run_dir if getattr(handler, "artifacts", None) is not None else None
-    reboot(run_dir, graceful=graceful)
-    return wait_for_boot(run_dir)
+    return reboot_and_wait(handler, graceful=graceful)
 
 
-class System76PowerGUIWorkflow(Workflow):
+class System76PowerGUIWorkflow(Workflow, GraphicsTransitionMixin):
     def __init__(self, artifacts=None):
         super().__init__(artifacts=artifacts)
         self.driver = GuiDriver(artifacts=artifacts)
         self.brightness = BrightnessHandler()
+        # Flavor used by the transition hooks; set by the transition entry
+        # points, defaulted so the mixin works even if a hook runs first.
+        from harness.platform import detect_platform
+
+        try:
+            self._os_id = detect_platform().os_id
+        except Exception:
+            self._os_id = "pop-22.04"
 
     def open_power_settings(self, os_id: str | None) -> WorkflowResult:
         """Open the power settings panel using the platform flavor's click layout."""
@@ -241,315 +247,67 @@ class System76PowerGUIWorkflow(Workflow):
             return WorkflowResult(success=False, item_id=item_id, summary=str(exc))
 
 
-    def get_transition_order(self, item_id: str = "gui.graphics_transitions") -> list[tuple[str, str]]:
-        """Determine chained transition order (same as CLI)."""
-        handler = System76Power(
+    # --- GraphicsTransitionMixin hooks (GUI driver) -------------------------
+
+    def _make_handler(self, item_id: str, phase: str):
+        return System76Power(
             test_id="system76_power.gui.graphics",
             item_id=item_id,
-            phase="verify",
+            phase=phase,
             artifacts=self.artifacts,
         )
-        switchable = _load_switchable()
-        if switchable is None:
-            switchable = handler.switchable()
-            _save_switchable(switchable)
-        if switchable != "switchable":
-            return []
 
-        modes = list(handler.graphics_modes)
-        current = handler.get_graphics_mode()
-        if current not in modes:
-            current = modes[0] if modes else None
-        if current is None:
-            return []
+    def _transition_log_prefix(self) -> str:
+        return "  [GUI] "
 
-        chained_order = [
-            ("hybrid", "integrated"),
-            ("integrated", "nvidia"),
-            ("nvidia", "integrated"),
-            ("integrated", "hybrid"),
-            ("hybrid", "compute"),
-            ("compute", "integrated"),
-            ("integrated", "compute"),
-            ("compute", "hybrid"),
-            ("hybrid", "nvidia"),
-            ("nvidia", "compute"),
-            ("compute", "nvidia"),
-            ("nvidia", "hybrid"),
-        ]
-        path = [(s, t) for s, t in chained_order if s in modes and t in modes]
+    def _switch_graphics_mode(self, handler, target: str) -> tuple[bool, str, str]:
+        res = self.set_graphics_mode_gui(target, item_id=None)
+        return bool(res.success), res.summary, res.summary
 
-        if current != "hybrid" and "hybrid" in modes and current in modes:
-            forced = (current, "hybrid")
-            if forced not in path:
-                path = [forced] + path
+    def _gui_verify_transition(self, target: str, item_id: str) -> bool | None:
+        """Visual check via the graphics panel; required evidence (None = no UI).
 
-        return path
-
-    def transition_to_hybrid(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transition.to_hybrid") -> WorkflowResult:
-        """Transition from current mode to hybrid via GUI clicks."""
-        from harness.platform import get_flavor_for_os_id
-
-        if not get_flavor_for_os_id(os_id).supports_graphics_switching():
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.record_item(item_id, status="skipped")
-                except Exception:
-                    pass
-            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
-
-        handler = System76Power(
-            test_id="system76_power.gui.graphics",
-            item_id=item_id,
-            phase="action",
-            artifacts=self.artifacts,
-        )
-        switchable = _load_switchable()
-        if switchable is None:
-            switchable = handler.switchable()
-            _save_switchable(switchable)
-        if switchable != "switchable":
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.record_item(item_id, status="skipped")
-                except Exception:
-                    pass
-            return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
-
-        current = handler.get_graphics_mode()
-        if current == "hybrid":
-            return WorkflowResult(success=True, item_id=item_id, summary="already hybrid", data={"from": current, "to": "hybrid", "actual": current, "verified": True})
-
-        # Switch to hybrid via GUI
-        self.set_graphics_mode_gui("hybrid", os_id=os_id, item_id=item_id)
-        import time
-        time.sleep(90)
-        self.dismiss_menus()
-        _setup_autologin()
-        _reboot_and_wait(handler)
-        current = handler.get_graphics_mode()
-        verified = (current == "hybrid")
-        return WorkflowResult(success=verified, item_id=item_id, summary=f"to_hybrid (actual: {current}, verified={verified})", data={"from": current, "to": "hybrid", "actual": current, "verified": verified})
-
-    def transition_graphics(self, source: str, target: str, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
-        """Execute a single graphics mode transition via GUI clicks.
-
-        Mirrors the CLI transition_graphics phase machine so it survives reboots.
+        Detection failures count as False — a detection error never proves
+        the panel shows the target, so it must fail the transition rather
+        than silently pass it (this matches the CLI driver's semantics).
         """
         from harness.platform import get_flavor_for_os_id
 
-        if not get_flavor_for_os_id(os_id).supports_graphics_switching():
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.record_item(item_id, status="skipped")
-                except Exception:
-                    pass
-            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
+        if not get_flavor_for_os_id(self._os_id).supports_graphics_switching():
+            return None
+        det = self.detect_graphics_mode(os_id=self._os_id, target=target)
+        if not det.success:
+            return False
+        detected = ((det.data or {}).get('graphics') or '').lower()
+        return detected == target.lower()
 
-        handler = System76Power(
-            test_id="system76_power.gui.graphics",
-            item_id=item_id,
-            phase="action",
-            artifacts=self.artifacts,
-        )
-        switchable = _load_switchable()
-        if switchable is None:
-            switchable = handler.switchable()
-            _save_switchable(switchable)
-        if switchable != "switchable":
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.record_item(item_id, status="skipped")
-                except Exception:
-                    pass
-            return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
+    def _reboot_after_switch(self, handler, target: str) -> bool:
+        """Pop!_OS 22.04: the shell's post-switch modal performs the reboot.
 
-        progress = self.resume_progress(item_id, kind="graphics_transition") if item_id else {}
-        results = progress.get("results", [])
-        done = {(e.get("from"), e.get("to")) for e in results if isinstance(e, dict)}
-
-        # Already completed in a previous run.
-        if (source, target) in done:
-            entry = next((e for e in results if e.get("from") == source and e.get("to") == target), {})
-            return WorkflowResult(
-                success=entry.get("verified", True),
-                item_id=item_id,
-                summary=f"{source}->{target} (already done, verified={entry.get('verified', '?')})",
-                data={"from": source, "to": target, "actual": entry.get("actual"), "verified": entry.get("verified", True)},
-            )
-
-        in_progress = (progress.get("source"), progress.get("target")) == (source, target)
-        phase = progress.get("phase", "start") if in_progress else "start"
-
-        current = handler.get_graphics_mode()
-        print(f"  [GUI] transition {source}->{target}: current mode = {current!r}", flush=True)
-
-        # If already in target mode, verify and return without rebooting.
-        if current == target:
-            print(f"  [GUI] Already in {target} mode, no transition needed.", flush=True)
-            verified = True
-            gui_verified = None
-            # GUI verification (only on 22.04).
-            try:
-                det = self.detect_graphics_mode(os_id=os_id, target=target)
-                if det.success:
-                    detected = (det.data or {}).get("graphics", "").lower()
-                    gui_verified = (detected == target.lower())
-                    if gui_verified is not None:
-                        verified = verified and gui_verified
-            except Exception:
-                gui_verified = None
-            entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
-            results.append(entry)
-            done.add((source, target))
-            self.persist_state(item_id, "state", {
-                "kind": "graphics_transition",
-                "phase": "done",
-                "source": source,
-                "target": target,
-                "current": current,
-                "results": results,
-                "completed": len(results),
-            })
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.save_text(item_id, "action", "transition -> " + source + " to " + target + " (verified=" + str(verified) + ")\n", step="transition")
-                except Exception:
-                    pass
-            return WorkflowResult(
-                success=verified,
-                item_id=item_id,
-                summary=f"{source}->{target} (actual: {current}, verified={verified})",
-                data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
-            )
-
-        # --- Phase: start - switch to target via GUI, save, reboot ---
-        if phase == "start":
-            self.set_graphics_mode_gui(target, os_id=os_id, item_id=item_id)
-            import time
-            time.sleep(5)
-            self.dismiss_menus()
-            self.persist_state(item_id, "state", {
-                "kind": "graphics_transition",
-                "phase": "rebooting",
-                "source": source,
-                "target": target,
-                "current": target,
-                "results": results,
-            })
-            _setup_autologin()
-            _reboot_and_wait(handler)
-            current = handler.get_graphics_mode()
-            phase = "rebooting"
-            print(f"  [GUI] after reboot: mode = {current!r} (target={target!r})", flush=True)
-
-        # --- Phase: rebooting — verify target, record result ---
-        if phase in ("rebooting", "done"):
-            current = handler.get_graphics_mode()
-            print(f"  [GUI] verify: current={current!r} target={target!r} match={current == target}", flush=True)
-            target_ok = (current == target)
-
-            # GUI verification (only on 22.04).
-            gui_verified = None
-            try:
-                det = self.detect_graphics_mode(os_id=os_id, target=target)
-                if det.success:
-                    detected = (det.data or {}).get("graphics", "").lower()
-                    gui_verified = (detected == target.lower())
-                else:
-                    gui_verified = False
-            except Exception:
-                gui_verified = None
-
-            verified = target_ok
-            if gui_verified is not None:
-                verified = verified and gui_verified
-
-            entry = {"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified}
-            results.append(entry)
-            done.add((source, target))
-            self.persist_state(item_id, "state", {
-                "kind": "graphics_transition",
-                "phase": "done",
-                "source": source,
-                "target": target,
-                "current": current,
-                "results": results,
-                "completed": len(results),
-            })
-
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.save_text(item_id, "action", "transition -> " + source + " to " + target + " (verified=" + str(verified) + ")\n", step="transition")
-                except Exception:
-                    pass
-
-            return WorkflowResult(
-                success=verified,
-                item_id=item_id,
-                summary=f"{source}->{target} (actual: {current}, verified={verified})",
-                data={"from": source, "to": target, "actual": current, "verified": verified, "gui_verified": gui_verified},
-            )
-
-        # Fallback
-        return WorkflowResult(success=False, item_id=item_id, summary=f"{source}->{target} (unexpected phase: {phase})")
-
-    def transition_graphics_all(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
-        """Run all graphics transitions via GUI in the order determined by starting mode."""
+        Forcing a hard reboot right after the extension click lands while
+        the mode switch is still in flight and has left machines in a broken
+        state.  On this flavor the modal's "Reboot Now" button is activated
+        with Tab, Tab, Enter after a 90 s settle (hardware-verified key
+        sequence — no coordinates needed).  Flavors without the modal keep
+        the scripted settle+reboot path.
+        """
         from harness.platform import get_flavor_for_os_id
 
-        if not get_flavor_for_os_id(os_id).supports_graphics_switching():
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.record_item(item_id, status="skipped")
-                except Exception:
-                    pass
-            return WorkflowResult(success=True, item_id=item_id, summary="not applicable", data={"skipped": True})
+        if not get_flavor_for_os_id(self._os_id).supports_graphics_switching():
+            return super()._reboot_after_switch(handler, target)
+        from .util import popup_reboot_and_wait
 
-        handler = System76Power(
-            test_id="system76_power.gui.graphics",
-            item_id=item_id,
-            phase="action",
-            artifacts=self.artifacts,
-        )
-        switchable = _load_switchable()
-        if switchable is None:
-            switchable = handler.switchable()
-            _save_switchable(switchable)
-        if switchable != "switchable":
-            if self.artifacts is not None and item_id:
-                try:
-                    self.artifacts.record_item(item_id, status="skipped")
-                except Exception:
-                    pass
-            return WorkflowResult(success=True, item_id=item_id, summary="not switchable", data={"skipped": True})
+        return popup_reboot_and_wait(handler)
 
-        # First, ensure we start in hybrid mode.
-        to_int = self.transition_to_hybrid(os_id=os_id, item_id=f"{item_id}.to_hybrid")
+    # --- mixin entry points (historical GUI signatures preserved) ------------
 
-        order = self.get_transition_order(item_id=item_id)
-        results = []
-        all_ok = True
-        for source, target in order:
-            res = self.transition_graphics(source, target, os_id=os_id, item_id=f"{item_id}.{source}_to_{target}")
-            entry = res.data if res.data else {"from": source, "to": target, "actual": None, "verified": res.success}
-            results.append(entry)
-            if not res.success:
-                all_ok = False
+    def transition_to_hybrid(self, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transition.to_hybrid") -> WorkflowResult:
+        self._os_id = os_id
+        return self._transition_to_hybrid_core(item_id=item_id)
 
-        final_report = "\n".join(
-            f"{e['from']}->{e['to']} (actual: {e.get('actual')}, verified={e.get('verified', '?')})"
-            for e in results
-        )
-        if self.artifacts is not None and item_id:
-            try:
-                self.artifacts.save_text(item_id, "verify", final_report + "\n", step="transition_report")
-            except Exception:
-                pass
-
-        failed = [e for e in results if not e.get("verified", True)]
-        summary = f"transitions:{len(results)} verified:{len(results)-len(failed)} failed:{len(failed)}"
-        return WorkflowResult(success=all_ok and len(failed) == 0, item_id=item_id, summary=summary, data={"transitions": results, "order": order})
+    def transition_graphics(self, source: str, target: str, os_id: str = "pop-22.04", item_id: str = "gui.graphics_transitions") -> WorkflowResult:
+        self._os_id = os_id
+        return self._transition_graphics_core(source, target, item_id=item_id)
 
     def detect_power_profile(
         self,
@@ -712,7 +470,7 @@ class System76PowerGUIWorkflow(Workflow):
             success=verified,
             item_id=item_id,
             summary=f"profile={normalized}",
-            data={"profile": normalized, "raw": value, "normalized": result.normalized},
+            data={"profile": normalized, "raw": value, "normalized": getattr(result, "normalized", None)},
         )
 
     def detect_power_profile_som(
@@ -880,7 +638,7 @@ class System76PowerGUIWorkflow(Workflow):
             success=verified,
             item_id=item_id,
             summary=f"graphics={value}",
-            data={"graphics": value, "normalized": result.normalized},
+            data={"graphics": value, "normalized": getattr(result, "normalized", None)},
         )
 
     def ensure_max_brightness(self, item_id: str = "brightness.setup") -> WorkflowResult:

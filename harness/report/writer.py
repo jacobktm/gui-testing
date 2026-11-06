@@ -37,7 +37,7 @@ class ReportWriter:
         ``"pdf"``, …) will be added here.
 
         If *archive* is True, the entire run directory (including all
-        artifacts and the report) is packed into a ``.tar.gz`` next to it.
+        artifacts and the report) is packed into a ``.tar.xz`` next to it.
         """
         fmt = fmt.lower()
         if fmt == "text":
@@ -54,30 +54,50 @@ class ReportWriter:
         return path
 
     def write_text(self) -> Path | None:
-        """Write a human-readable text report to ``<run_dir>/test_report.txt``."""
+        """Write a human-readable text report to ``<run_dir>/test_report.txt``.
+
+        The summary and per-test section are driven by the pytest outcomes
+        recorded by ``conftest.py`` (``manifest.metadata.pytest_results``),
+        not by the manifest item entries.  Manifest entries are listed
+        separately as workflow evidence.
+        """
         run = self.run
         if run is None:
             return None
         try:
+            results = run.manifest.metadata.get("pytest_results") or {}
+            not_run = run.manifest.metadata.get("pytest_not_run") or []
+
             lines = []
             lines.append("=" * 60)
             lines.append("TEST RESULT REPORT")
             lines.append("=" * 60)
             lines.append(f"Run ID: {run.run_id}")
             lines.append(f"Run dir: {run.run_dir}")
+            lines.append(f"Run status: {run.manifest.status}")
             lines.append("")
-            # Count statuses
-            counts: dict[str, int] = {}
-            for entry in run.manifest.tests:
-                status = entry.get("status", "unknown")
-                counts[status] = counts.get(status, 0) + 1
-            counts["total"] = len(run.manifest.tests)
-            lines.append("Summary:")
-            for key in ("passed", "failed", "skipped", "unknown", "total"):
-                if key in counts:
-                    lines.append(f"  {key}: {counts[key]}")
+
+            if results or not_run:
+                counts: dict[str, int] = {}
+                for verdict in results.values():
+                    counts[verdict] = counts.get(verdict, 0) + 1
+                counts["not_run"] = len(not_run)
+                counts["total"] = len(results) + len(not_run)
+                lines.append("Pytest summary:")
+                for key in ("passed", "failed", "error", "skipped", "not_run", "total"):
+                    if key in counts:
+                        lines.append(f"  {key}: {counts[key]}")
+                lines.append("")
+                lines.append("Pytest results:")
+                for nodeid, verdict in results.items():
+                    lines.append(f"  [{verdict.upper()}] {nodeid}")
+                for nodeid in not_run:
+                    lines.append(f"  [NOT RUN] {nodeid}")
+            else:
+                lines.append("Pytest results: not recorded (older run?)")
             lines.append("")
-            lines.append("Per-test results:")
+
+            lines.append("Workflow item evidence:")
             for entry in run.manifest.tests:
                 tid = entry.get("id", "?")
                 status = entry.get("status", "unknown")
@@ -101,7 +121,8 @@ class ReportWriter:
             report_path.write_text(report, encoding="utf-8")
             print(report)
             return report_path
-        except Exception:
+        except Exception as error:
+            print(f"report: FAILED to write test_report.txt: {error}", flush=True)
             return None
 
     def write_html(self) -> Path | None:
@@ -129,5 +150,6 @@ class ReportWriter:
                 tf.add(run_dir, arcname=run_dir.name)
             print(f"Archived run to: {archive_path}")
             return archive_path
-        except Exception:
+        except Exception as error:
+            print(f"report: FAILED to archive run {run.run_dir}: {error}", flush=True)
             return None

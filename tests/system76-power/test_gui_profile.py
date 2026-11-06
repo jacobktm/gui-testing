@@ -2,7 +2,9 @@ import os
 
 import pytest
 
-from workflows.system76_power import System76PowerCLIWorkflow, System76PowerGUIWorkflow
+from workflows.system76_power import System76PowerGUIWorkflow
+from workflows.system76_power.graphics_transitions import get_graphics_chain
+from workflows.system76_power.transitions import get_perf_profile_chain
 
 
 def _os_id():
@@ -10,6 +12,27 @@ def _os_id():
     from harness.platform import detect_platform
 
     return os.environ.get("TEST_OS_ID") or detect_platform().os_id
+
+
+def _supports_graphics_ui() -> bool:
+    """Capability gate: does this platform flavor expose the graphics-switching UI?
+
+    Replaces the old ``os_id.startswith("pop-22")`` checks: flavors declare the
+    capability themselves (see ``PlatformFlavor.supports_graphics_switching``),
+    so supporting a new release never means editing these tests.
+    """
+    from harness.platform import get_flavor_for_os_id
+
+    return get_flavor_for_os_id(_os_id()).supports_graphics_switching()
+
+
+# Chains come from the workflows themselves, rotated to start from the state
+# the machine is actually in — the priming ``to_performance``/``to_hybrid``
+# tests are gone.  The graphics chain is a closed 12-edge circuit whose
+# rotation is persisted for the run, so resumed boots keep walking it and the
+# edge whose reboot is in flight stays at the front of the chain.
+GUI_PROFILE_TRANSITIONS = get_perf_profile_chain()
+GRAPHICS_TRANSITIONS = get_graphics_chain()
 
 
 @pytest.mark.gui
@@ -73,202 +96,71 @@ class TestSystem76PowerGUI:
         res = wf.get_brightness()
         assert res.success, res.summary
 
-    def test_transition_to_performance(self, artifacts):
-        """Ensure starting from performance profile (known starting point)."""
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        os_id = _os_id()
-        res = wf.transition_to_performance(os_id=os_id, item_id="gui.power_profile_transition.to_performance")
-        assert res.success, res.summary
+    @pytest.mark.parametrize(
+        "source,target",
+        [pytest.param(s, t, id=f"{s}_to_{t}") for s, t in GUI_PROFILE_TRANSITIONS],
+    )
+    def test_gui_perf_profile_transition(self, artifacts, source, target):
+        """GUI-driven power-profile transition, verified visually.
 
-    def test_gui_transition_performance_to_balanced(self, artifacts):
+        The chain is rotated to start from the profile the machine is in
+        (no priming ``to_performance`` test); the per-parameter ``item_id``
+        matches the ids the six individual tests used, so persisted phase
+        state keeps its resume scheme.
+        """
         from workflows.system76_power import ProfileTransitionWorkflow
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
         os_id = _os_id()
-        res = wf.gui_wf.transition_perf_profile("performance", "balanced", os_id=os_id, item_id="gui.power_profile_transition.performance_to_balanced")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"verification failed: {data}"
-
-    def test_gui_transition_balanced_to_battery(self, artifacts):
-        from workflows.system76_power import ProfileTransitionWorkflow
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        os_id = _os_id()
-        res = wf.gui_wf.transition_perf_profile("balanced", "battery", os_id=os_id, item_id="gui.power_profile_transition.balanced_to_battery")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"verification failed: {data}"
-
-    def test_gui_transition_battery_to_performance(self, artifacts):
-        from workflows.system76_power import ProfileTransitionWorkflow
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        os_id = _os_id()
-        res = wf.gui_wf.transition_perf_profile("battery", "performance", os_id=os_id, item_id="gui.power_profile_transition.battery_to_performance")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"verification failed: {data}"
-
-    def test_gui_transition_performance_to_battery(self, artifacts):
-        from workflows.system76_power import ProfileTransitionWorkflow
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        os_id = _os_id()
-        res = wf.gui_wf.transition_perf_profile("performance", "battery", os_id=os_id, item_id="gui.power_profile_transition.performance_to_battery")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"verification failed: {data}"
-
-    def test_gui_transition_battery_to_balanced(self, artifacts):
-        from workflows.system76_power import ProfileTransitionWorkflow
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        os_id = _os_id()
-        res = wf.gui_wf.transition_perf_profile("battery", "balanced", os_id=os_id, item_id="gui.power_profile_transition.battery_to_balanced")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"verification failed: {data}"
-
-    def test_gui_transition_balanced_to_performance(self, artifacts):
-        from workflows.system76_power import ProfileTransitionWorkflow
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        os_id = _os_id()
-        res = wf.gui_wf.transition_perf_profile("balanced", "performance", os_id=os_id, item_id="gui.power_profile_transition.balanced_to_performance")
+        res = wf.gui_wf.transition_perf_profile(
+            source, target, os_id=os_id,
+            item_id=f"gui.power_profile_transition.{source}_to_{target}",
+        )
         assert res.success, res.summary
         data = res.data or {}
         assert data.get("verified") is True, f"verification failed: {data}"
 
     def test_detect_graphics_mode(self, artifacts):
-        from handlers.system76_power import System76Power
+        from handlers.system76_power import System76Power, probe_switchable
         _h = System76Power(artifacts=artifacts)
-        if _h.switchable() != "switchable":
+        if probe_switchable(_h) != "switchable":
             pytest.skip("not switchable graphics")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
         os_id = _os_id()
-        # On systems where we can't visually detect reliably, just ensure navigation works
+        visual_required = _supports_graphics_ui()
+        # On flavors without a reliably detectable graphics panel, just ensure
+        # navigation works.
         try:
             res = wf.detect_graphics_mode(os_id=os_id)
-            if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26"):
-                # Only skip visual validation on Ubuntu and COSMIC
+            if not visual_required:
                 return
             assert res.success, res.summary
         except Exception:
-            if os_id.startswith("ubuntu") or os_id.startswith("pop-24") or os_id.startswith("pop-26"):
+            if not visual_required:
                 return  # skip visual validation only
             pytest.skip("graphics mode detection not available")
 
     @pytest.mark.reboot
-    def test_gui_transition_to_hybrid(self, artifacts):
-        """Pop!_OS 22.04 only."""
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_to_hybrid(os_id="pop-22.04")
-        assert res.success, res.summary
+    @pytest.mark.parametrize(
+        "source,target",
+        [pytest.param(s, t, id=f"{s}_to_{t}") for s, t in GRAPHICS_TRANSITIONS],
+    )
+    def test_gui_graphics_transition(self, artifacts, source, target):
+        """One reboot-aware GUI graphics transition (parametrized rotated chain).
 
-    @pytest.mark.reboot
-    def test_gui_transition_hybrid_to_integrated(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("hybrid", "integrated", os_id="pop-22.04")
-        assert res.success, res.summary
+        The chain is rotated at collection to start from the mode the machine
+        is actually in, so the priming ``to_hybrid`` test (and its extra
+        reboot) is unnecessary.
 
-    @pytest.mark.reboot
-    def test_gui_transition_integrated_to_nvidia(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
+        Deliberately no explicit ``item_id``: all twelve transitions share the
+        workflow default (``gui.graphics_transitions``) — one phase-state
+        document accumulating results, exactly as before parametrization.
+        (The CLI chain uses per-transition item_ids instead; don't mix the
+        schemes.)
+        """
+        if not _supports_graphics_ui():
+            pytest.skip("no graphics-switching UI on this flavor")
         wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("integrated", "nvidia", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_nvidia_to_integrated(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("nvidia", "integrated", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_integrated_to_hybrid(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("integrated", "hybrid", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_hybrid_to_compute(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("hybrid", "compute", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_compute_to_integrated(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("compute", "integrated", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_integrated_to_compute(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("integrated", "compute", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_compute_to_hybrid(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("compute", "hybrid", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_hybrid_to_nvidia(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("hybrid", "nvidia", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_nvidia_to_compute(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("nvidia", "compute", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_compute_to_nvidia(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("compute", "nvidia", os_id="pop-22.04")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_gui_transition_nvidia_to_hybrid(self, artifacts):
-        os_id = _os_id()
-        if not os_id.startswith("pop-22"):
-            pytest.skip("GUI graphics only on Pop!_OS 22.04")
-        wf = System76PowerGUIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("nvidia", "hybrid", os_id="pop-22.04")
+        res = wf.transition_graphics(source, target, os_id=_os_id())
         assert res.success, res.summary
 
     def test_cli_profile_change_reflected_in_extension(self, artifacts):

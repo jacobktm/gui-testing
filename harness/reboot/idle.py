@@ -10,10 +10,13 @@ Backends
 ``gnome``
     ``gsettings`` keys under ``org.gnome.desktop.session``,
     ``org.gnome.desktop.screensaver``, ``org.gnome.desktop.lockdown`` and
-    ``org.gnome.settings-daemon.plugins.power``.  Every key is read first;
-    keys that do not exist on this GNOME version (for example Ubuntu-only
-    keys) are skipped rather than assumed.  A ``gnome-session-inhibit``
-    process additionally inhibits idle at the session level as a fallback.
+    ``org.gnome.settings-daemon.plugins.power``.  Key existence is probed with
+    ``gsettings list-keys`` so an unreachable session bus is reported as a
+    failure instead of looking like "every key is undefined".  Applied keys are
+    read back, and the critical subset (``idle-delay``, ``lock-enabled``) is
+    verified; ``tests/idle_guard.py`` asserts it again as a fail-fast guard.
+    A ``gnome-session-inhibit`` process additionally inhibits idle at the
+    session level as a fallback.
 
 ``cosmic``
     ``cosmic-idle`` reads its settings from ``cosmic-config``:
@@ -30,7 +33,9 @@ Backends
 State is persisted to ``~/.local/share/gui-testing/idle_state.json`` so it
 survives a reboot (reboot tests resume the suite on the next boot).  Saving is
 idempotent: the first save wins, so a resumed run re-disables the timer
-without overwriting the user's original values.
+without overwriting the user's original values.  The generated resume script
+re-applies the protection *before* pytest starts, covering the gap between
+autologin and ``pytest_configure``.
 
 Every function is best-effort and never raises; failures are logged so a
 missing tool or schema does not abort a test run.
@@ -128,6 +133,43 @@ def _gsettings_get(schema: str, key: str) -> str | None:
     return None
 
 
+# Schema -> {key: defined?}, cached.  ``gsettings get`` returns rc!=0 for BOTH
+# an undefined key and an unreachable session bus; without this probe a run
+# launched without DBUS_SESSION_BUS_ADDRESS would silently skip every key and
+# run under the user's real idle+lock policy ("applied 0" with no clue).
+_SCHEMA_KEYS: dict[str, set[str] | None] = {}
+
+
+def _gsettings_list_keys(schema: str) -> set[str] | None:
+    """Defined keys of *schema*, or ``None`` when gsettings cannot talk to dconf."""
+    if schema in _SCHEMA_KEYS:
+        return _SCHEMA_KEYS[schema]
+    result = _run(["gsettings", "list-keys", schema])
+    keys: set[str] | None = None
+    if result is not None:
+        if result.returncode == 0:
+            keys = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+        else:
+            _log(f"gsettings list-keys {schema} rc={result.returncode}: {result.stderr.strip()}")
+    _SCHEMA_KEYS[schema] = keys
+    return keys
+
+
+def _gsettings_key_exists(schema: str, key: str) -> bool:
+    keys = _gsettings_list_keys(schema)
+    return keys is not None and key in keys
+
+
+def _gsettings_get2(schema: str, key: str) -> tuple[bool, str | None]:
+    """``(bus_ok, value)`` — distinguishes 'read failed' from 'key absent'."""
+    if not _gsettings_key_exists(schema, key):
+        return True, None
+    result = _run(["gsettings", "get", schema, key])
+    if result is not None and result.returncode == 0:
+        return True, result.stdout.strip()
+    return False, None
+
+
 def _gsettings_set(schema: str, key: str, value: str) -> bool:
     result = _run(["gsettings", "set", schema, key, value])
     if result is None:
@@ -196,7 +238,7 @@ def _is_our_inhibitor(pid: int | None) -> bool:
 
 
 def _stop_inhibitor(pid: int | None) -> None:
-    if not _is_our_inhibitor(pid):
+    if pid is None or not _is_our_inhibitor(pid):
         return
     try:
         os.kill(int(pid), 15)
@@ -218,7 +260,13 @@ def _load_state() -> dict | None:
 def _write_state(state: dict) -> None:
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-        IDLE_STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        # Durable: idle_state.json holds the user's original settings and must
+        # survive the abrupt reboot a reboot test can issue moments later.
+        try:
+            from harness.artifacts.manifest import durable_write_text
+            durable_write_text(IDLE_STATE_PATH, json.dumps(state, indent=2))
+        except Exception:
+            IDLE_STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception as exc:
         _log(f"could not save state: {exc}")
 
@@ -237,10 +285,20 @@ def save_idle_state() -> dict:
         if not _gsettings_available():
             _log("gsettings not found; cannot save GNOME idle settings")
         else:
+            bus_failures = 0
             for schema, key, _ in GNOME_KEYS:
-                value = _gsettings_get(schema, key)
-                if value is not None:
+                if not _gsettings_key_exists(schema, key):
+                    continue
+                bus_ok, value = _gsettings_get2(schema, key)
+                if bus_ok and value is not None:
                     state["gsettings"][f"{schema}|{key}"] = value
+                else:
+                    bus_failures += 1
+            if bus_failures:
+                _log(
+                    f"WARNING: could not read {bus_failures} GNOME key(s) — session bus "
+                    "likely unreachable; their originals will NOT be restored"
+                )
 
     elif desktop == "cosmic":
         directory = _cosmic_dir()
@@ -261,32 +319,99 @@ def save_idle_state() -> dict:
     return state
 
 
-def disable_idle() -> bool:
-    """Disable idle blanking, screen locking and idle suspend."""
+# Read-back subset asserted after every GNOME apply and by the guard test in
+# tests/idle_guard.py.  These are the keys that actually decide whether the
+# screen blanks/locks, so confirming just these is enough to prove the
+# protection took effect; the full GNOME_KEYS list is still applied best-effort.
+GNOME_READBACK: list[tuple[str, str, str]] = [
+    ("org.gnome.desktop.session", "idle-delay", "uint32 0"),
+    ("org.gnome.desktop.screensaver", "lock-enabled", "false"),
+]
+
+
+def disable_idle() -> dict:
+    """Disable idle blanking, screen locking and idle suspend.
+
+    Returns a structured report::
+
+        {"backend": "gnome" | "cosmic" | None,
+         "applied": ["schema|key", ...] | ["cosmic/file", ...],
+         "values": {"schema|key": "read-back value"},   # gnome only
+         "readback_ok": bool | None,
+         "errors": ["human readable failure", ...]}
+
+    A key whose read FAILED (session bus unreachable — the classic failure
+    when pytest runs under sudo or from the systemd resume unit) is reported
+    as an error instead of being skipped as "not defined"; ``gsettings
+    list-keys`` is what distinguishes the two. Applied GNOME keys are read
+    back and logged, so a ``grep`` for ``[idle]`` in a resume log shows the
+    actual values rather than just a count.
+    """
+    report: dict = {"backend": None, "applied": [], "values": {}, "readback_ok": None, "errors": []}
+
     desktop = _desktop_kind()
+    report["backend"] = desktop
     if desktop is None:
         _log("unknown desktop; nothing to disable")
-        return False
+        report["errors"].append("desktop undetected (set XDG_CURRENT_DESKTOP or fix session detection)")
+        return report
 
     if desktop == "gnome":
         if not _gsettings_available():
             _log("gsettings not found; cannot disable GNOME idle settings")
-            return False
-        ok = 0
+            report["errors"].append("gsettings not installed")
+            return report
         for schema, key, value in GNOME_KEYS:
-            # Skip keys this GNOME version/schema does not define.
-            if _gsettings_get(schema, key) is None:
+            if not _gsettings_key_exists(schema, key):
+                # Only silence genuinely-undefined keys (older/newer schemas,
+                # Ubuntu-only keys); a failed list-keys probe is an error.
+                if _gsettings_list_keys(schema) is None:
+                    report["errors"].append(f"{schema}: gsettings cannot reach the session bus")
                 continue
-            if _gsettings_set(schema, key, value):
-                ok += 1
-        _log(f"applied {ok} GNOME idle setting(s)")
+            bus_ok, _current = _gsettings_get2(schema, key)
+            if not bus_ok:
+                report["errors"].append(f"{schema} {key}: read failed (session bus?)")
+                continue
+            if not _gsettings_set(schema, key, value):
+                report["errors"].append(f"{schema} {key}: set failed")
+                continue
+            ok, actual = _gsettings_get2(schema, key)
+            if not ok:
+                report["errors"].append(f"{schema} {key}: read-back failed")
+                continue
+            report["applied"].append(f"{schema}|{key}")
+            report["values"][f"{schema}|{key}"] = actual
+            _log(f"gnome {schema} {key} = {actual}")
+        # Verify the critical subset actually reads as disabled.  A critical
+        # key we could not probe or set must make readback_ok False — "nothing
+        # was verified" is not "verified fine".
+        rb_missing = False
+        for schema, key, want in GNOME_READBACK:
+            if not _gsettings_key_exists(schema, key):
+                rb_missing = True
+                report["errors"].append(
+                    f"critical key {schema} {key} unverifiable "
+                    "(undefined or session bus unreachable)"
+                )
+                continue
+            got = report["values"].get(f"{schema}|{key}")
+            if got is None:
+                got = _gsettings_get(schema, key)
+            if got != want:
+                rb_missing = True
+                report["errors"].append(f"read-back {schema} {key}={got!r}, wanted {want!r}")
+        report["readback_ok"] = not rb_missing
+        _log(
+            f"applied {len(report['applied'])} GNOME idle setting(s)"
+            + ("" if report["readback_ok"] else " — READ-BACK INCOMPLETE")
+        )
         # Reuse an inhibitor from an earlier attempt in this run, if alive.
         pid = (_load_state() or {}).get("inhibitor_pid")
         if not _is_our_inhibitor(pid):
             pid = _start_gnome_inhibitor()
         if pid:
             _update_state(inhibitor_pid=pid)
-        return ok > 0
+        return report
 
     if desktop == "cosmic":
         directory = _cosmic_dir()
@@ -294,18 +419,29 @@ def disable_idle() -> bool:
             directory.mkdir(parents=True, exist_ok=True)
         except Exception as exc:
             _log(f"could not create {directory}: {exc}")
-            return False
-        ok = 0
+            report["errors"].append(f"could not create {directory}: {exc}")
+            return report
         for key in COSMIC_IDLE_KEYS:
+            path = directory / key
             try:
-                (directory / key).write_text("None", encoding="utf-8")
-                ok += 1
+                path.write_text("None", encoding="utf-8")
             except Exception as exc:
                 _log(f"could not write {key}: {exc}")
-        _log(f"applied {ok} COSMIC idle setting(s)")
-        return ok > 0
+                report["errors"].append(f"could not write {path}: {exc}")
+                continue
+            try:
+                if path.read_text(encoding="utf-8") != "None":
+                    report["errors"].append(f"read-back mismatch for {path}")
+                    continue
+            except Exception as exc:
+                report["errors"].append(f"read-back failed for {path}: {exc}")
+                continue
+            report["applied"].append(f"cosmic/{key}")
+        report["readback_ok"] = len(report["applied"]) == len(COSMIC_IDLE_KEYS)
+        _log(f"applied {len(report['applied'])} COSMIC idle setting(s)")
+        return report
 
-    return False
+    return report
 
 
 def restore_idle() -> bool:

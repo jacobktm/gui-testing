@@ -10,8 +10,6 @@ Provides single workflows for:
 from __future__ import annotations
 
 import time
-from pathlib import Path
-from typing import Any
 
 from .base import Workflow, WorkflowResult
 
@@ -47,82 +45,6 @@ class UIWorkflow(Workflow):
                 success=False,
                 item_id=item_id,
                 summary=f"failed to open UI: {e}",
-                data={"error": str(e)},
-            )
-
-    def take_screenshot(
-        self,
-        os_id: str = None,
-        item_id: str | None = None,
-        out_dir: str = "/tmp/opencode/gui",
-    ) -> WorkflowResult:
-        """Take a screenshot using OS-appropriate method."""
-        try:
-            from ..screenshots import capture
-            import os
-            Path(out_dir).mkdir(parents=True, exist_ok=True)
-            import time
-            ts = int(time.time() * 1000)
-            shot_path = Path(out_dir) / f"screenshot_{ts}.png"
-            screenshot = capture(shot_path)
-            return WorkflowResult(
-                success=True,
-                item_id=item_id,
-                summary=f"screenshot taken: {screenshot.path}",
-                data={"path": str(screenshot.path), "width": screenshot.width, "height": screenshot.height},
-            )
-        except Exception as e:
-            return WorkflowResult(
-                success=False,
-                item_id=item_id,
-                summary=f"screenshot failed: {e}",
-                data={"error": str(e)},
-            )
-
-    def query_llm(
-        self,
-        prompt: str,
-        image_path: str,
-        expected: set[str] | list[str] = None,
-        item_id: str | None = None,
-    ) -> WorkflowResult:
-        """Query LLM with prompt and image."""
-        try:
-            from ..detection import parse_detection
-            resp = self.driver.ollama.send_message(prompt, [image_path])
-            if not resp:
-                return WorkflowResult(
-                    success=False,
-                    item_id=item_id,
-                    summary="empty response from LLM",
-                )
-            if expected:
-                try:
-                    result = parse_detection(resp, expected=expected)
-                    return WorkflowResult(
-                        success=True,
-                        item_id=item_id,
-                        summary=f"detected: {result.value}",
-                        data={"value": result.value, "normalized": result.normalized, "response": resp},
-                    )
-                except Exception as e:
-                    return WorkflowResult(
-                        success=False,
-                        item_id=item_id,
-                        summary=f"parse failed: {e}",
-                        data={"response": resp},
-                    )
-            return WorkflowResult(
-                success=True,
-                item_id=item_id,
-                summary="got response",
-                data={"response": resp},
-            )
-        except Exception as e:
-            return WorkflowResult(
-                success=False,
-                item_id=item_id,
-                summary=f"llm query failed: {e}",
                 data={"error": str(e)},
             )
 

@@ -12,7 +12,8 @@ bring the graphical session back without a human in the loop, which means:
 
 Everything here is program-agnostic so any package's tests can reuse it.
 System writes are best-effort: :func:`_write_privileged` tries a direct write
-first and falls back to ``sudo -n tee``.
+first and falls back to the narrow, root-owned privileged helper documented in
+:mod:`harness.reboot.helper`.
 """
 
 from __future__ import annotations
@@ -29,10 +30,27 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from .helper import (
+    COSMIC_GREETER_CONFIG,
+    GREETD_CONFIG,
+    GDM_CONFIGS,
+    LIGHTDM_CONFIG,
+    SDDM_CONFIG,
+)
+from .helper import STATE_DIR as STATE_ROOT
+from .helper import priv_read, priv_remove, priv_write
+
 __all__ = [
+    "AUTOLOGIN_STATE",
     "AutologinManager",
     "AutologinResult",
+    "COSMIC_GREETER_CONFIG",
+    "COSMIC_SESSION_COMMANDS",
     "DesktopSession",
+    "GDM_CONFIGS",
+    "GREETD_CONFIG",
+    "LIGHTDM_CONFIG",
+    "SDDM_CONFIG",
     "detect_desktop",
     "detect_display_manager",
     "detect_gui_user",
@@ -47,13 +65,7 @@ __all__ = [
 
 #: Where the original display-manager configuration is snapshotted.  It lives
 #: outside the repository so a run that reboots can still restore itself.
-AUTOLOGIN_STATE = Path("/var/lib/gui-testing/autologin.json")
-
-COSMIC_GREETER_CONFIG = Path("/etc/greetd/cosmic-greeter.toml")
-GREETD_CONFIG = Path("/etc/greetd/config.toml")
-GDM_CONFIGS = (Path("/etc/gdm3/custom.conf"), Path("/etc/gdm/custom.conf"))
-LIGHTDM_CONFIG = Path("/etc/lightdm/lightdm.conf")
-SDDM_CONFIG = Path("/etc/sddm.conf.d/zz-gui-testing-autologin.conf")
+AUTOLOGIN_STATE = STATE_ROOT / "autologin.json"
 
 COSMIC_SESSION_COMMANDS = ("start-cosmic", "cosmic-session")
 _GRAPHICAL_SESSION_TYPES = {"wayland", "x11", "mir"}
@@ -104,10 +116,7 @@ def _read_privileged(path: Path) -> str | None:
         return None
     except OSError:
         pass
-    completed = _run(["sudo", "-n", "cat", str(path)])
-    if completed is not None and completed.returncode == 0:
-        return completed.stdout
-    return None
+    return priv_read(path)
 
 
 def _write_privileged(path: Path, text: str) -> bool:
@@ -118,40 +127,10 @@ def _write_privileged(path: Path, text: str) -> bool:
         return True
     except (PermissionError, OSError):
         pass
-    # Need root: try passwordless sudo first (works in background),
-    # then fall back to interactive sudo (prompts in terminal).
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        subprocess.run(["sudo", "-n", "mkdir", "-p", str(path.parent)],
-                      stdout=subprocess.DEVNULL, stderr=None)
-    # Try passwordless first.
-    try:
-        result = subprocess.run(
-            ["sudo", "-n", "tee", str(path)],
-            input=text,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0:
-            return True
-    except (OSError, subprocess.SubprocessError):
-        pass
-    # Fall back to interactive sudo.
-    try:
-        result = subprocess.run(
-            ["sudo", "tee", str(path)],
-            input=text,
-            stdout=subprocess.DEVNULL,
-            stderr=None,
-            text=True,
-            timeout=120,
-        )
-        return result.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    # Needs root.  The sudoers rule grants only the privileged helper, which
+    # allowlists this path, writes it through a temporary file and syncs it so a
+    # reboot landing mid-write cannot truncate it.
+    return priv_write(path, text)
 
 
 def _remove_privileged(path: Path) -> bool:
@@ -162,29 +141,7 @@ def _remove_privileged(path: Path) -> bool:
         return True
     except (PermissionError, OSError):
         pass
-    # Try passwordless first.
-    try:
-        result = subprocess.run(
-            ["sudo", "-n", "rm", "-f", str(path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            return True
-    except (OSError, subprocess.SubprocessError):
-        pass
-    # Fall back to interactive.
-    try:
-        result = subprocess.run(
-            ["sudo", "rm", "-f", str(path)],
-            stdout=subprocess.DEVNULL,
-            stderr=None,
-            timeout=60,
-        )
-        return result.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    return priv_remove(path)
 
 
 # ---------------------------------------------------------------------------
@@ -612,39 +569,6 @@ def force_restore_autologin() -> bool:
             if text is not None and "[initial_session]" in text:
                 cleaned = strip_toml_section(text, "initial_session").rstrip() + "\n"
                 written = _write_privileged(config_path, cleaned)
-                if not written:
-                    # Fallback: use sudo sed to remove the section.
-                    try:
-                        import subprocess
-                        # Use python to do the removal via sudo.
-                        script = (
-                            "import re, pathlib, sys\n"
-                            "p = pathlib.Path(%r)\n"
-                            "t = p.read_text()\n"
-                            "lines = t.splitlines()\n"
-                            "out = []\n"
-                            "skip = False\n"
-                            "for line in lines:\n"
-                            "    if line.strip() == '[initial_session]':\n"
-                            "        skip = True\n"
-                            "        continue\n"
-                            "    if skip and line.strip().startswith('['):\n"
-                            "        skip = False\n"
-                            "    if not skip:\n"
-                            "        out.append(line)\n"
-                            "p.write_text('\\n'.join(out) + '\\n')\n"
-                        ) % str(config_path)
-                        r = subprocess.run(
-                            ["sudo", "-n", "python3", "-c", script],
-                            capture_output=True, text=True, timeout=10,
-                        )
-                        if r.returncode == 0:
-                            written = True
-                            print(f"[force_restore] sudo python3 cleaned {config_path}", file=sys.stderr, flush=True)
-                        else:
-                            print(f"[force_restore] sudo python3 failed: {r.stderr.strip()}", file=sys.stderr, flush=True)
-                    except Exception as e:
-                        print(f"[force_restore] sudo fallback exception: {e}", file=sys.stderr, flush=True)
                 if not written:
                     ok = False
                     print(f"[force_restore] FAILED to write {config_path}", file=sys.stderr, flush=True)

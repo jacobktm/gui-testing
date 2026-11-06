@@ -12,12 +12,31 @@ class WorkflowResult:
     data: dict[str, Any] | None = None
 
 
+def rotate_circuit(
+    circuit: list[tuple[str, str]],
+    start: str | None,
+) -> list[tuple[str, str]]:
+    """Rotate a *closed* edge circuit so the first edge leaves ``start``.
+
+    A circuit here is an ordered edge list where each edge's target is the
+    next edge's source and the final target equals the first source (an
+    Eulerian circuit over the states being walked).  Rotation preserves that
+    property while re-anchoring the walk, so tests can start from whatever
+    state the machine is actually in instead of forcing a priming transition
+    first.  Returns an unchanged copy when *start* is ``None`` or is not a
+    vertex of the circuit.
+    """
+    if not start:
+        return list(circuit)
+    for i, (source, _) in enumerate(circuit):
+        if source == start:
+            return list(circuit[i:]) + list(circuit[:i])
+    return list(circuit)
+
+
 class Workflow:
     def __init__(self, artifacts=None):
         self.artifacts = artifacts
-
-    def run(self, *args, **kwargs) -> WorkflowResult:
-        raise NotImplementedError
 
     def resume_progress(self, item_id: str, *, kind: str, phase: str = "state") -> dict[str, Any]:
         """Return persisted progress of ``kind`` for ``item_id``.

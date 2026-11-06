@@ -240,9 +240,7 @@ The `pyproject.toml` already includes `workflows*` and `handlers*`, so new apps 
 
 `harness.workflows.UIWorkflow` provides generic methods:
 - `open_ui_elements(clicks)` - Click through a sequence
-- `take_screenshot()` - Capture screenshot
-- `query_llm(prompt, image_path, expected)` - Ask LLM about image
-- `detect_from_ui(clicks, prompt, expected)` - Full chain
+- `detect_from_ui(clicks, prompt, expected)` - Full chain (screenshot + LLM)
 
 ### Using GuiDriver Directly
 

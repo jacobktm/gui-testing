@@ -6,13 +6,15 @@ artifact ``run_dir`` so a persistent marker can survive the reboot.
 
 Reboot strategy — no long command chains::
 
-    1. ``sudo -n python3 -m harness.reboot reboot``  → kernel reboot(2) syscall
-       via ctypes.  The sudoers rule installed by pytest.sh whitelists
-       ``python3 -m harness.reboot *``, so no extra configuration is needed.
-       This either reboots the kernel immediately or returns an error —
-       no polkit, no inhibitor locks, no silent failure.
-    2. ``sudo -n reboot -f``                         → force reboot fallback.
-    3. SysRq ``b``                                   → last resort.
+    1. ``systemctl reboot``                          → polkit, no sudo needed
+       inside a graphical session (and always works when pytest is root).
+    2. ``sudo -n <privileged helper> reboot``        → kernel reboot(2) syscall
+       performed by the root-owned helper installed by ``pytest.sh``.  The
+       sudoers rule grants that one fixed command only, so nothing user-writable
+       is ever executed as root (see :mod:`harness.reboot.helper`).
+    3. ``sudo -n <privileged helper> reboot-graceful`` → orderly shutdown as root.
+    4. SysRq ``b``                                    → last resort, also via the
+       helper.
 """
 
 from __future__ import annotations
@@ -22,7 +24,26 @@ import subprocess
 import time
 from pathlib import Path
 
+from harness.artifacts.manifest import durable_write_text
+
+from .helper import HELPER_PATH, priv_sysrq
+
 EPHEMERAL_MARKER = Path("/tmp/gui-testing-reboot-marker")
+BOOT_ID_NAME = "boot-id"
+
+
+def _current_boot_id() -> str | None:
+    """Read the current boot ID, or ``None`` if it cannot be read."""
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except Exception:
+        return None
+
+
+def _boot_id_state_path() -> Path:
+    from .recovery import state_dir
+
+    return state_dir() / BOOT_ID_NAME
 
 
 def setup_autologin(username: str | None = None) -> bool:
@@ -66,24 +87,39 @@ def _run(cmd: list[str], timeout: float = 30.0):
 
 
 def _prepare_markers(run_dir: Path | None) -> dict:
-    """Record boot ID and create persistent + ephemeral reboot markers."""
-    state: dict = {"boot_id_before": None, "persistent_marker": None}
-    try:
-        state["boot_id_before"] = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
-    except Exception:
-        pass
+    """Record boot ID and create persistent + ephemeral reboot markers.
+
+    The boot ID is stored three ways so post-reboot confirmation survives the
+    abrupt ``reboot(2)`` that follows moments later:
+
+    * in the marker files themselves (persistent one lives in the run dir),
+    * in ``~/.local/share/gui-testing/boot-id`` so ``wait_for_boot(None)``
+      (no run dir, e.g. the end-of-session reboot) can confirm too,
+    * in the in-process ``state`` dict for the per-method checks below.
+
+    All writes are durable (fsync) so they are on disk before the reboot.
+    """
+    state: dict = {"boot_id_before": _current_boot_id(), "persistent_marker": None}
+    boot_id_before = state["boot_id_before"] or "reboot_pending"
 
     if run_dir is not None:
         try:
             pm = Path(run_dir) / "reboot-marker"
-            pm.write_text("reboot_pending", encoding="utf-8")
+            durable_write_text(pm, boot_id_before)
             state["persistent_marker"] = pm
         except Exception:
             pass
     try:
-        EPHEMERAL_MARKER.write_text("reboot_pending", encoding="utf-8")
+        durable_write_text(EPHEMERAL_MARKER, boot_id_before)
     except Exception:
         pass
+    if state["boot_id_before"] is not None:
+        try:
+            path = _boot_id_state_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            durable_write_text(path, state["boot_id_before"])
+        except Exception:
+            pass
     return state
 
 
@@ -91,22 +127,34 @@ def _prepare_markers(run_dir: Path | None) -> dict:
 # state — required when the test semantics depend on a normal shutdown, e.g.
 # the brightness-preserved-across-reboot check).
 GRACEFUL_REBOOT_CMDS = [
-    ["systemctl", "reboot"],                # polkit (no sudo)
-    ["sudo", "-n", "systemctl", "reboot"],  # sudo (sudoers whitelisted)
-    ["sudo", "-n", "reboot", "-f"],         # force fallback
+    ["systemctl", "reboot"],                            # polkit (no sudo)
+    ["sudo", "-n", str(HELPER_PATH), "reboot-graceful"],  # orderly shutdown as root
+    ["sudo", "-n", str(HELPER_PATH), "reboot"],           # force fallback
 ]
 
 # Reliable chain for graphics transitions (matches previous working behavior).
-# systemd polkit/sudo paths are more likely to actually trigger a reboot on
-# this system than the raw reboot(2) syscall.
+# The kernel reboot(2) syscall through the privileged helper is the most
+# dependable; polkit and unprivileged attempts stay as lower-preference tries.
 RELIABLE_REBOOT_CMDS = [
-    ["sudo", "-n", "reboot", "-f"],
-    ["sudo", "-n", "systemctl", "reboot"],
+    ["sudo", "-n", str(HELPER_PATH), "reboot"],            # kernel reboot(2)
+    ["sudo", "-n", str(HELPER_PATH), "reboot-graceful"],   # orderly, as root
     ["systemctl", "reboot", "--force"],
     ["reboot", "-f"],
     ["reboot"],
     ["systemctl", "reboot"],
 ]
+
+
+def mark_reboot_pending(run_dir: Path | None = None) -> dict:
+    """Record the current boot ID as the pre-reboot marker *without* rebooting.
+
+    For reboots the harness *waits for* rather than issues — e.g. the
+    Pop!_OS 22.04 shell modal that appears after a GUI graphics-mode switch
+    — so :func:`wait_for_boot` / :func:`did_reboot` can still confirm the
+    machine left this boot.  Call this before triggering the external
+    reboot.
+    """
+    return _prepare_markers(run_dir)
 
 
 def reboot(run_dir: Path | None = None, graceful: bool = False) -> bool:
@@ -118,6 +166,9 @@ def reboot(run_dir: Path | None = None, graceful: bool = False) -> bool:
     ``graceful=True`` uses a normal systemd shutdown instead of an abrupt
     reboot.  Use it when the test outcome depends on services receiving a
     proper shutdown sequence (e.g. brightness preservation).
+
+    Returns ``True`` only when a boot-ID change confirmed the reboot; returns
+    ``False`` when every method failed and we are still on the same boot.
     """
     state = _prepare_markers(run_dir)
 
@@ -129,7 +180,7 @@ def reboot(run_dir: Path | None = None, graceful: bool = False) -> bool:
             print(f"    rc={result.returncode if result else None} stderr={stderr!r}", flush=True)
             print("  Waiting 5s to see if reboot happens...", flush=True)
             time.sleep(5)
-            if Path("/proc/sys/kernel/random/boot_id").read_text().strip() != state["boot_id_before"]:
+            if _current_boot_id() != state["boot_id_before"]:
                 return True
             print("  Reboot not confirmed; trying next method...", flush=True)
         print("  No graceful method confirmed; falling back to other methods", flush=True)
@@ -141,54 +192,82 @@ def reboot(run_dir: Path | None = None, graceful: bool = False) -> bool:
             print(f"    rc={result.returncode if result else None} stderr={stderr!r}", flush=True)
             print("  Waiting 5s to see if reboot happens...", flush=True)
             time.sleep(5)
-            if Path("/proc/sys/kernel/random/boot_id").read_text().strip() != state["boot_id_before"]:
+            if _current_boot_id() != state["boot_id_before"]:
                 return True
             print("  Reboot not confirmed; trying next method...", flush=True)
         print("  No standard method confirmed; trying kernel reboot(2) syscall", flush=True)
 
-    # Pre-flight: enable SysRq so the last-resort method works.
-    _run(["sh", "-c", "echo 1 | sudo tee /proc/sys/kernel/sysrq > /dev/null"], timeout=5)
+    # Pre-flight: enable SysRq so the last-resort method works, and flush state
+    # to disk before an abrupt reboot.
+    priv_sysrq("1")
     _run(["sync"], timeout=10)
-    print("  Rebooting via kernel reboot(2) syscall (sudo harness.reboot reboot)...", flush=True)
-    result = _run(["sudo", "-n", "python3", "-m", "harness.reboot", "reboot"])
+    print("  Rebooting via kernel reboot(2) syscall (privileged helper)...", flush=True)
+    result = _run(["sudo", "-n", str(HELPER_PATH), "reboot"])
     stderr = (result.stderr.strip() if result else "")
     print(f"    rc={result.returncode if result else None} stderr={stderr!r}", flush=True)
 
     print("  Waiting 5s to see if reboot happens...", flush=True)
     time.sleep(5)
 
-    boot_id = lambda: Path("/proc/sys/kernel/random/boot_id").read_text().strip()
-    if boot_id() == state["boot_id_before"]:
-        # Still here → syscall failed. Force reboot next.
-        print("  Reboot not confirmed; trying sudo reboot -f...", flush=True)
-        result = _run(["sudo", "-n", "reboot", "-f"])
+    if _current_boot_id() == state["boot_id_before"]:
+        # Still here → the syscall did not take.  Ask systemd for an orderly
+        # reboot as root before resorting to SysRq.
+        print("  Reboot not confirmed; trying orderly reboot as root...", flush=True)
+        result = _run(["sudo", "-n", str(HELPER_PATH), "reboot-graceful"])
         print(f"    rc={result.returncode if result else None} stderr={(result.stderr.strip() if result else '')!r}", flush=True)
         time.sleep(5)
-        if boot_id() == state["boot_id_before"]:
+        if _current_boot_id() == state["boot_id_before"]:
             print("  Reboot not confirmed; forcing via SysRq...", flush=True)
-            _run(["sh", "-c", "echo b | sudo tee /proc/sysrq-trigger > /dev/null"], timeout=10)
-    return True
+            priv_sysrq("b")
+            time.sleep(5)
+            if _current_boot_id() != state["boot_id_before"]:
+                return True
+    # If SysRq b worked we never get here; reaching the end means the boot ID
+    # never changed, so honestly report that the machine did not reboot.
+    print("  WARNING: every reboot method failed; the system did NOT reboot", flush=True)
+    return False
 
 
 def wait_for_boot(run_dir: Path | None = None, timeout: float = 600.0) -> bool:
-    """Wait for the system to be up and running after a reboot."""
+    """Wait for the system to come back *from a different boot*.
+
+    Returns ``True`` only when the new boot is confirmed — either the current
+    boot ID differs from the one recorded by :func:`reboot` (read from the
+    persistent marker or the ``boot-id`` state file), or the legacy marker
+    signature holds (persistent marker present, ephemeral /tmp marker gone).
+
+    If the system is up but the boot cannot be confirmed, returns ``False``
+    with a loud warning instead of credulously declaring success: callers
+    gate post-reboot verification on this, and a machine that never rebooted
+    must not get to "verify" its way to a passing transition test.
+    """
     print("Waiting for system to reboot...", flush=True)
     time.sleep(5)
     deadline = time.time() + timeout
     elapsed = 0
     persistent_prefix = Path(run_dir) / "reboot-marker" if run_dir is not None else None
+
+    # Boot ID recorded before the reboot, from whichever source is available.
     boot_id_before = None
-    if persistent_prefix is not None and persistent_prefix.exists():
-        # Rebooting was pending for this run directory; markers prove reboot.
-        pass
+    for source in (persistent_prefix, _boot_id_state_path()):
+        try:
+            if source is not None and source.exists():
+                value = source.read_text(encoding="utf-8").strip()
+                if value and value != "reboot_pending":
+                    boot_id_before = value
+                    break
+        except Exception:
+            pass
 
     while time.time() < deadline:
-        rebooted = False
-        # Persistent marker exists + ephemeral gone => reboot happened.
-        p_exists = persistent_prefix is not None and persistent_prefix.exists()
-        e_exists = Path(EPHEMERAL_MARKER).exists()
-        if p_exists and not e_exists:
-            rebooted = True
+        # Primary confirmation: the boot ID changed.
+        rebooted = boot_id_before is not None and _current_boot_id() not in (None, boot_id_before)
+        # Legacy confirmation: persistent marker survived, ephemeral did not.
+        if not rebooted:
+            p_exists = persistent_prefix is not None and persistent_prefix.exists()
+            e_exists = Path(EPHEMERAL_MARKER).exists()
+            if p_exists and not e_exists:
+                rebooted = True
         if rebooted:
             print("  Reboot confirmed", flush=True)
 
@@ -198,9 +277,13 @@ def wait_for_boot(run_dir: Path | None = None, timeout: float = 600.0) -> bool:
             rc = result.returncode if result else None
             if status in ("running", "degraded") or (rc == 0 and status):
                 if not rebooted:
-                    print("  Warning: reboot markers unchanged, system may not have rebooted", flush=True)
-                else:
-                    print(f"  System rebooted and is {status} (after {elapsed}s)", flush=True)
+                    print(
+                        "  ERROR: system is up but on the SAME boot as before — "
+                        "the reboot never happened",
+                        flush=True,
+                    )
+                    return False
+                print(f"  System rebooted and is {status} (after {elapsed}s)", flush=True)
                 # Settle: give the system time to fully initialize.
                 print("  Settling for 10s...", flush=True)
                 time.sleep(10)
@@ -222,8 +305,18 @@ def wait_for_boot(run_dir: Path | None = None, timeout: float = 600.0) -> bool:
 
 
 def did_reboot(run_dir: Path | None = None) -> bool:
-    """Check whether a reboot occurred for the given run directory."""
+    """Check whether a reboot occurred since the last :func:`reboot` call."""
     persistent = Path(run_dir) / "reboot-marker" if run_dir is not None else None
     if persistent is not None and persistent.exists() and not Path(EPHEMERAL_MARKER).exists():
         return True
+    # Boot-ID based confirmation works even without a run directory.
+    try:
+        path = _boot_id_state_path()
+        if path.exists():
+            before = path.read_text(encoding="utf-8").strip()
+            current = _current_boot_id()
+            if before and current and before != current:
+                return True
+    except Exception:
+        pass
     return False

@@ -55,6 +55,7 @@ from .manifest import (
     STATUS_PASSED,
     STATUS_UNKNOWN,
     Manifest,
+    durable_write_text,
     load_manifest,
     write_manifest,
 )
@@ -71,8 +72,6 @@ __all__ = [
     "RunArtifacts",
     "SavedArtifact",
     "STATUS_SKIPPED",
-    "load_state",
-    "save_state",
 ]
 
 
@@ -132,9 +131,17 @@ def _next_sequence(directory: Path) -> int:
 
 
 def _derive_status(items: Sequence[dict[str, Any]]) -> str:
-    statuses = {entry.get("status") for entry in items}
+    """Roll item statuses up to a run status.
+
+    ``unknown`` is deliberately non-passing: a run with unresolved items
+    (an interrupted or crashed run leaves entries behind) must not count as
+    passed, or ``KeepFailures`` retention deletes its evidence.
+    """
+    statuses = {entry.get("status") or STATUS_UNKNOWN for entry in items}
     if STATUS_FAILED in statuses:
         return STATUS_FAILED
+    if STATUS_UNKNOWN in statuses:
+        return STATUS_UNKNOWN
     if STATUS_PASSED in statuses:
         return STATUS_PASSED
     return STATUS_UNKNOWN
@@ -431,7 +438,12 @@ class RunArtifacts:
             kind=kind,
             suffix=suffix,
         )
-        destination.write_text(text, encoding="utf-8")
+        # Durable + atomic: ``save_state`` documents drive the reboot phase
+        # machine, and a hard reboot right after this write must not lose it
+        # (a lost state document rolls the phase back to "start", which
+        # re-switches graphics, re-reboots, and silently re-runs completed
+        # work).
+        durable_write_text(destination, text)
         return self._record(
             item_id,
             phase,

@@ -46,10 +46,53 @@ __all__ = [
     "STATUS_UNKNOWN",
     "VALID_STATUSES",
     "Manifest",
+    "durable_write_text",
     "manifest_path",
     "load_manifest",
     "write_manifest",
 ]
+
+
+def _fsync_dir(directory: Path) -> None:
+    """Best-effort fsync of a directory so a rename survives power loss."""
+    try:
+        dir_fd = os.open(str(directory), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        pass
+    finally:
+        os.close(dir_fd)
+
+
+def durable_write_text(path: Path | str, text: str) -> Path:
+    """Write *text* durably: temp file -> fsync -> atomic rename -> dir fsync.
+
+    Documents written here must survive an abrupt ``reboot(2)`` issued moments
+    later: reboot-phase state and completion ledgers drive resume, and a lost
+    or half-written file makes completed work re-run (or whole phases roll
+    back).  Leaf helper so every JSON document in the harness shares one
+    write path.
+    """
+    path = Path(path)
+    directory = path.parent
+    fd, tmp_name = tempfile.mkstemp(dir=directory, prefix=f".{path.stem}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+        _fsync_dir(directory)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+    return path
 
 
 def _parse_time(value: object) -> datetime | None:
@@ -81,6 +124,12 @@ def _derive_status(data: dict[str, Any], summary: dict[str, Any]) -> str:
     passed = summary.get("passed")
     if isinstance(failed, int) and failed > 0:
         return STATUS_FAILED
+    # Un-run tests or unknown entries are non-passing: never read a run with
+    # holes in it as a clean pass.
+    for key in ("not_run", "unknown"):
+        value = summary.get(key)
+        if isinstance(value, int) and value > 0:
+            return STATUS_UNKNOWN
     if isinstance(passed, int) and passed > 0:
         return STATUS_PASSED
     return STATUS_UNKNOWN
@@ -144,17 +193,5 @@ def load_manifest(run_dir: Path) -> Manifest | None:
 def write_manifest(run_dir: Path, manifest: Manifest) -> Path:
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    path = manifest_path(run_dir)
-    fd, tmp_name = tempfile.mkstemp(dir=run_dir, prefix=".manifest.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(manifest.to_dict(), handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
-    return path
+    text = json.dumps(manifest.to_dict(), indent=2, ensure_ascii=False) + "\n"
+    return durable_write_text(manifest_path(run_dir), text)

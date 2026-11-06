@@ -14,12 +14,11 @@ The logic is intentionally package-agnostic: any test suite can use it.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
+from harness.artifacts.manifest import durable_write_text
+
 __all__ = [
-    "ResumeState",
-    "bump_attempts",
     "load_completed",
     "record_completed",
     "resume_dir",
@@ -68,34 +67,7 @@ def record_completed(run_dir: Path | str, nodeid: str, outcome: str = "passed") 
         return
     completed[nodeid] = outcome
     payload = json.dumps({"completed": completed}, indent=2) + "\n"
-    temporary = path.with_name(f"{path.name}.tmp")
-    temporary.write_text(payload, encoding="utf-8")
-    os.replace(temporary, path)
-
-
-def bump_attempts(run_dir: Path | str, *, limit: int = 10) -> bool:
-    """Increment the resume counter and report whether another try is allowed."""
-    path = resume_dir(run_dir) / "attempts"
-    try:
-        attempts = int(path.read_text(encoding="utf-8").strip() or "0")
-    except (OSError, ValueError):
-        attempts = 0
-    attempts += 1
-    path.write_text(f"{attempts}\n", encoding="utf-8")
-    return attempts <= limit
-
-
-class ResumeState:
-    """Small convenience wrapper combining completion + attempt bookkeeping."""
-
-    def __init__(self, run_dir: Path | str) -> None:
-        self.run_dir = Path(run_dir)
-
-    def completed(self) -> dict[str, str]:
-        return load_completed(self.run_dir)
-
-    def mark(self, nodeid: str, outcome: str = "passed") -> None:
-        record_completed(self.run_dir, nodeid, outcome)
-
-    def next_attempt(self, *, limit: int = 10) -> bool:
-        return bump_attempts(self.run_dir, limit=limit)
+    # Durable + atomic so a reboot seconds after a test completes cannot lose
+    # the record (which would re-run an already-finished test).  Also fsyncs
+    # the directory so the rename survives.
+    durable_write_text(path, payload)

@@ -1,6 +1,8 @@
 import pytest
 
 from workflows.system76_power import System76PowerCLIWorkflow
+from workflows.system76_power.graphics_transitions import get_graphics_chain
+from workflows.system76_power.transitions import get_perf_profile_chain
 
 
 def _detected_os_id() -> str:
@@ -10,6 +12,17 @@ def _detected_os_id() -> str:
     from harness.platform import detect_platform
 
     return os.environ.get("TEST_OS_ID") or detect_platform().os_id
+
+
+# Chains come from the workflows themselves, rotated to start from the
+# state the machine is actually in — no priming test/transition is needed.
+# The graphics chain is a closed 12-edge circuit (`GRAPHICS_CHAIN_ORDER`);
+# the rotation is persisted for the run so resumed boots keep walking it.
+GRAPHICS_TRANSITIONS = get_graphics_chain()
+
+# CLI profile switches whose effect on the GUI extension is verified.
+# (source, target); a closed 6-edge circuit rotated to the current profile.
+CLI_PROFILE_TRANSITIONS = get_perf_profile_chain()
 
 
 @pytest.mark.cli
@@ -27,10 +40,50 @@ class TestSystem76PowerCLIFull:
         assert (res.data or {}).get("profile") == target
 
     def test_laptop_switchable_graphics_can_be_queried(self, artifacts):
-        from handlers.system76_power import System76Power
-        from harness.power_state import save_switchable_state
-        handler = System76Power(artifacts=artifacts)
-        result = handler.switchable()
+        """Probe the graphics-switching capability of this system.
+
+        What the CLI does depends on the machine, which only the probe
+        itself can reveal:
+
+        - stacks that can answer switchability reply on stdout
+          (``switchable`` / ``not switchable``);
+        - systems whose OS provides no graphics switching (COSMIC-era
+          Pop!_OS, Ubuntu) or whose hardware lacks an iGPU+dGPU pair exit
+          non-zero; the handler surfaces that as
+          ``GraphicsSwitchingUnsupported`` carrying the CLI's message.
+
+        ``pytest.raises(..., match=...)`` cannot be applied
+        unconditionally: whether the device *answers* or *refuses* is a
+        property of the machine, not a known input to this test.  The
+        except-branch asserts the equivalent of ``match=`` — the refusal
+        must carry the documented "not supported / not switchable" message,
+        not an unrelated CLI error.  Timeouts and other unexpected errors
+        are deliberately *not* caught: those are real failures.  (This also
+        fixes the historical failure of this test on every run log: the old
+        handler leaked raw stderr into the result when its string heuristic
+        missed, blowing up the membership assertion.)
+        """
+        import re
+
+        from handlers.system76_power import GraphicsSwitchingUnsupported, System76Power
+        from handlers.system76_power.power_state import save_switchable_state
+
+        # item_id so the handler records the raw command result (rc, stdout,
+        # stderr) as an artifact under this test — the evidence needed when
+        # the answer is unexpected.
+        handler = System76Power(
+            test_id="system76_power.cli.switchable",
+            item_id="cli.laptop_switchable_graphics_can_be_queried",
+            phase="verify",
+            artifacts=artifacts,
+        )
+        try:
+            result = handler.switchable()
+        except GraphicsSwitchingUnsupported as exc:
+            assert re.search(r"not (supported|switchable)", str(exc), re.IGNORECASE), f"unexpected refusal: {exc}"
+            # Persist so transition tests don't re-query.
+            save_switchable_state("not switchable")
+            return
         # Persist so transition tests don't re-query.
         save_switchable_state(result)
         assert result in ("switchable", "not switchable"), result
@@ -38,17 +91,17 @@ class TestSystem76PowerCLIFull:
     def test_graphics_power_query_set(self, artifacts):
         import subprocess
         import os
-        from handlers.system76_power import System76Power
-        from harness.power_state import load_switchable_state
+        from handlers.system76_power import System76Power, probe_switchable
+        from handlers.system76_power.power_state import load_switchable_state
         _h = System76Power(artifacts=artifacts)
         switchable = load_switchable_state()
         if switchable is None:
-            switchable = _h.switchable()
+            switchable = probe_switchable(_h)
         if switchable != "switchable":
             pytest.skip("not switchable graphics")
+        from workflows.system76_power import System76PowerCLIWorkflow
         # Ensure we're in hybrid mode for graphics power control to work
         try:
-            from workflows.system76_power import System76PowerCLIWorkflow
             wf2 = System76PowerCLIWorkflow(artifacts=artifacts)
             wf2.transition_to_hybrid(item_id="cli.graphics_transition.pre_power")
         except Exception:
@@ -102,154 +155,22 @@ class TestSystem76PowerCLIFull:
             pytest.fail(f"graphics power set failed: {e}")
 
     @pytest.mark.reboot
-    def test_graphics_transition_to_hybrid(self, artifacts):
-        """Transition from current mode to hybrid (ensures starting point)."""
-        from workflows.system76_power import System76PowerCLIWorkflow
+    @pytest.mark.parametrize(
+        "source,target",
+        [pytest.param(s, t, id=f"{s}_to_{t}") for s, t in GRAPHICS_TRANSITIONS],
+    )
+    def test_graphics_transition(self, artifacts, source, target):
+        """One reboot-aware graphics transition (parametrized rotated chain).
 
+        The chain is rotated at collection to start from the mode the machine
+        is actually in, so the first edge needs no priming ``to_hybrid``
+        switch/reboot.  The per-parameter ``item_id`` keeps the resume
+        scheme: the workflow persists its ``graphics_transition`` phase
+        machine under the same id the twelve individual tests used, so an
+        interrupted multi-boot run resumes exactly where it stopped.
+        """
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_to_hybrid(item_id="cli.graphics_transition.to_hybrid")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-
-    @pytest.mark.reboot
-    def test_graphics_transition_hybrid_to_integrated(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("hybrid", "integrated", item_id="cli.graphics_transition.hybrid_to_integrated")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_integrated_to_nvidia(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("integrated", "nvidia", item_id="cli.graphics_transition.integrated_to_nvidia")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_nvidia_to_integrated(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("nvidia", "integrated", item_id="cli.graphics_transition.nvidia_to_integrated")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_integrated_to_hybrid(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("integrated", "hybrid", item_id="cli.graphics_transition.integrated_to_hybrid")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_hybrid_to_compute(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("hybrid", "compute", item_id="cli.graphics_transition.hybrid_to_compute")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_compute_to_integrated(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("compute", "integrated", item_id="cli.graphics_transition.compute_to_integrated")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_integrated_to_compute(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("integrated", "compute", item_id="cli.graphics_transition.integrated_to_compute")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_compute_to_hybrid(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("compute", "hybrid", item_id="cli.graphics_transition.compute_to_hybrid")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_hybrid_to_nvidia(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("hybrid", "nvidia", item_id="cli.graphics_transition.hybrid_to_nvidia")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_nvidia_to_compute(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("nvidia", "compute", item_id="cli.graphics_transition.nvidia_to_compute")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_compute_to_nvidia(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("compute", "nvidia", item_id="cli.graphics_transition.compute_to_nvidia")
-        if (res.data or {}).get("skipped"):
-            pytest.skip("not switchable graphics")
-        assert res.success, res.summary
-        data = res.data or {}
-        assert data.get("verified") is True, f"CLI verification failed: {data}"
-
-    @pytest.mark.reboot
-    def test_graphics_transition_nvidia_to_hybrid(self, artifacts):
-        from workflows.system76_power import System76PowerCLIWorkflow
-
-        wf = System76PowerCLIWorkflow(artifacts=artifacts)
-        res = wf.transition_graphics("nvidia", "hybrid", item_id="cli.graphics_transition.nvidia_to_hybrid")
+        res = wf.transition_graphics(source, target, item_id=f"cli.graphics_transition.{source}_to_{target}")
         if (res.data or {}).get("skipped"):
             pytest.skip("not switchable graphics")
         assert res.success, res.summary
@@ -258,123 +179,44 @@ class TestSystem76PowerCLIFull:
 
     def test_cli_graphics_reflected_in_extension(self, artifacts):
         """Aggregate: verify panel applet reflected CLI graphics changes."""
-        from workflows.system76_power import System76PowerCLIWorkflow
-
         wf = System76PowerCLIWorkflow(artifacts=artifacts)
         res = wf.verify_cli_graphics_reflected_in_extension()
         if (res.data or {}).get("skipped"):
-            return  # not 22.04 or no GUI verification data
+            pytest.skip("no graphics-switching UI on this flavor, or no transitions ran")
         assert res.success, res.summary
 
-    def test_transition_to_performance(self, artifacts):
-        """Ensure starting from performance profile (known starting point)."""
-        from handlers.system76_power import System76Power
-        handler = System76Power(artifacts=artifacts)
-        current = handler.get_perf_profile()
-        if current == "performance":
-            return
-        handler.switch_perf_profile("performance")
+    @pytest.mark.parametrize(
+        "source,target",
+        [pytest.param(s, t, id=f"{s}_to_{t}") for s, t in CLI_PROFILE_TRANSITIONS],
+    )
+    def test_cli_profile_reflected(self, artifacts, source, target):
+        """Switch profile via CLI, verify the GUI extension shows it."""
         import time
-        time.sleep(1)
-        assert handler.get_perf_profile() == "performance"
 
-    def test_cli_profile_performance_to_balanced(self, artifacts):
-        """Switch to balanced via CLI, verify GUI reflects it."""
-        from workflows.system76_power import ProfileTransitionWorkflow
         from handlers.system76_power import System76Power
-        import os, time
+        from workflows.system76_power import ProfileTransitionWorkflow
+
         os_id = _detected_os_id()
         handler = System76Power(artifacts=artifacts)
-        handler.switch_perf_profile("performance")
+        handler.switch_perf_profile(source)
         time.sleep(15)
-        handler.switch_perf_profile("balanced")
+        handler.switch_perf_profile(target)
         time.sleep(25)
         wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        res = wf.validate_profile("balanced", os_id, item_id="cli.profile_reflected.performance_to_balanced")
-        assert res.success, res.summary
-
-    def test_cli_profile_balanced_to_battery(self, artifacts):
-        """Switch to battery via CLI, verify GUI reflects it."""
-        from workflows.system76_power import ProfileTransitionWorkflow
-        from handlers.system76_power import System76Power
-        import os, time
-        os_id = _detected_os_id()
-        handler = System76Power(artifacts=artifacts)
-        handler.switch_perf_profile("balanced")
-        time.sleep(15)
-        handler.switch_perf_profile("battery")
-        time.sleep(25)
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        res = wf.validate_profile("battery", os_id, item_id="cli.profile_reflected.balanced_to_battery")
-        assert res.success, res.summary
-
-    def test_cli_profile_battery_to_performance(self, artifacts):
-        """Switch to performance via CLI, verify GUI reflects it."""
-        from workflows.system76_power import ProfileTransitionWorkflow
-        from handlers.system76_power import System76Power
-        import os, time
-        os_id = _detected_os_id()
-        handler = System76Power(artifacts=artifacts)
-        handler.switch_perf_profile("battery")
-        time.sleep(15)
-        handler.switch_perf_profile("performance")
-        time.sleep(25)
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        res = wf.validate_profile("performance", os_id, item_id="cli.profile_reflected.battery_to_performance")
-        assert res.success, res.summary
-
-    def test_cli_profile_performance_to_battery(self, artifacts):
-        """Switch to battery via CLI, verify GUI reflects it."""
-        from workflows.system76_power import ProfileTransitionWorkflow
-        from handlers.system76_power import System76Power
-        import os, time
-        os_id = _detected_os_id()
-        handler = System76Power(artifacts=artifacts)
-        handler.switch_perf_profile("performance")
-        time.sleep(15)
-        handler.switch_perf_profile("battery")
-        time.sleep(25)
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        res = wf.validate_profile("battery", os_id, item_id="cli.profile_reflected.performance_to_battery")
-        assert res.success, res.summary
-
-    def test_cli_profile_battery_to_balanced(self, artifacts):
-        """Switch to balanced via CLI, verify GUI reflects it."""
-        from workflows.system76_power import ProfileTransitionWorkflow
-        from handlers.system76_power import System76Power
-        import os, time
-        os_id = _detected_os_id()
-        handler = System76Power(artifacts=artifacts)
-        handler.switch_perf_profile("battery")
-        time.sleep(15)
-        handler.switch_perf_profile("balanced")
-        time.sleep(25)
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        res = wf.validate_profile("balanced", os_id, item_id="cli.profile_reflected.battery_to_balanced")
-        assert res.success, res.summary
-
-    def test_cli_profile_balanced_to_performance(self, artifacts):
-        """Switch to performance via CLI, verify GUI reflects it."""
-        from workflows.system76_power import ProfileTransitionWorkflow
-        from handlers.system76_power import System76Power
-        import os, time
-        os_id = _detected_os_id()
-        handler = System76Power(artifacts=artifacts)
-        handler.switch_perf_profile("balanced")
-        time.sleep(15)
-        handler.switch_perf_profile("performance")
-        time.sleep(25)
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        res = wf.validate_profile("performance", os_id, item_id="cli.profile_reflected.balanced_to_performance")
+        res = wf.validate_profile(
+            target, os_id, item_id=f"cli.profile_reflected.{source}_to_{target}"
+        )
         assert res.success, res.summary
 
     def test_cli_profile_reflected_in_extension(self, artifacts):
-        """Test that any power profile change from CLI is reflected in the extension."""
-        from workflows.system76_power import ProfileTransitionWorkflow
-        import os
-        os_id = _detected_os_id()
-        wf = ProfileTransitionWorkflow(artifacts=artifacts)
-        res = wf.run_all_cli_validate(os_id=os_id, item_id="cli.profile_reflected")
+        """Aggregate: every profile must have been reflected at least once.
+
+        Pure aggregation over the persisted results of the parametrized
+        per-transition tests — it no longer re-runs the whole switch
+        sequence itself (~6 minutes of duplicate work removed).
+        """
+        wf = System76PowerCLIWorkflow(artifacts=artifacts)
+        res = wf.verify_all_cli_profiles_reflected_in_extension(item_id="cli.profile_reflected")
         if (res.data or {}).get("skipped"):
-            return
+            pytest.skip("no profile verification data (transitions not run)")
         assert res.success, res.summary

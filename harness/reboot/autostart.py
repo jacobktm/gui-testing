@@ -20,6 +20,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .helper import HELPER_PATH, UNIT_FILE_NAME, priv_cleanup_unit
+from .recovery import RESUME_GAVE_UP_NAME
+
 __all__ = [
     "ResumePlan",
     "build_pytest_args",
@@ -27,10 +30,16 @@ __all__ = [
     "install_resume_unit",
     "remove_resume_unit",
     "unit_path_for",
+    "wants_path_for",
 ]
 
-UNIT_NAME = "gui-testing-resume.service"
-MAX_ATTEMPTS = 60
+# Single source of truth: the privileged helper allowlists unit removal by name.
+UNIT_NAME = UNIT_FILE_NAME
+# Each attempt is a full boot; 12 covers legitimate multi-boot runs with room
+# to spare while keeping a broken loop short.  (The attempt count lives in the
+# generated script's ``resume/attempts`` file, maintained by that wrapper
+# script alone.)
+MAX_ATTEMPTS = 12
 
 
 @dataclass(frozen=True)
@@ -44,6 +53,11 @@ class ResumePlan:
 def unit_path_for(username: str | None = None) -> Path:
     home = Path(pwd.getpwnam(username).pw_dir) if username else Path.home()
     return home / ".config" / "systemd" / "user" / UNIT_NAME
+
+
+def wants_path_for(username: str | None = None) -> Path:
+    """The ``enable`` symlink ``systemctl --user enable`` creates for the unit."""
+    return unit_path_for(username).parent / "graphical-session.target.wants" / UNIT_NAME
 
 
 def build_pytest_args(argv: list[str] | None = None) -> list[str]:
@@ -84,15 +98,25 @@ def build_resume_script(
     quoted_run_dir = shlex.quote(str(run_dir))
     quoted_attempts = shlex.quote(str(attempts_file))
     quoted_workdir = shlex.quote(str(workdir))
+    quoted_helper = shlex.quote(str(HELPER_PATH))
 
     user_setup = ""
     if username:
-        user_setup = f"""
+        user_setup = """
 # Best-effort: wait for the graphical session that autologin started.
 SESSION_ID=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u={shlex.quote(username)} '$3 == u {{ print $1; exit }}')
 if [ -n "$SESSION_ID" ]; then
-    [ -z "${{XDG_SESSION_TYPE:-}}" ] && XDG_SESSION_TYPE=$(loginctl show-session "$SESSION_ID" -p Type --value 2>/dev/null) && export XDG_SESSION_TYPE
-    [ -z "${{XDG_CURRENT_DESKTOP:-}}" ] && XDG_CURRENT_DESKTOP=$(loginctl show-session "$SESSION_ID" -p Desktop --value 2>/dev/null) && export XDG_CURRENT_DESKTOP
+    # Assign/extend then export separately: the old `VAR=$(cmd) && export VAR`
+    # chain silently skipped the export when loginctl printed nothing, leaving
+    # _desktop_kind() blind and every idle/lock key untouched.
+    if [ -z "${{XDG_SESSION_TYPE:-}}" ]; then
+        XDG_SESSION_TYPE=$(loginctl show-session "$SESSION_ID" -p Type --value 2>/dev/null)
+        export XDG_SESSION_TYPE
+    fi
+    if [ -z "${{XDG_CURRENT_DESKTOP:-}}" ]; then
+        XDG_CURRENT_DESKTOP=$(loginctl show-session "$SESSION_ID" -p Desktop --value 2>/dev/null)
+        export XDG_CURRENT_DESKTOP
+    fi
 fi
 """
 
@@ -107,6 +131,7 @@ export GUI_TESTING_RESUMED=1
 export RUN_DESTRUCTIVE_TESTS=1
 export GUI_TESTING_AUTOSTART=1
 export GUI_TESTING_SETUP_DONE=1
+export GUI_TESTING_PRIVILEGED_HELPER={quoted_helper}
 
 LOG_FILE={quoted_run_dir}/resume/pytest-output.log
 mkdir -p {quoted_run_dir}/resume
@@ -143,6 +168,18 @@ if [ ! -S "$XDG_RUNTIME_DIR/${{WAYLAND_DISPLAY:-wayland-0}}" ] && [ -z "${{DISPL
     exit 1
 fi
 
+# Re-apply idle/lock protection BEFORE pytest starts: between autologin and
+# pytest_configure the desktop policy would otherwise blank/lock the screen
+# mid-run and every later GUI capture would fail.  State saving is idempotent
+# (the pre-reboot idle_state.json already holds the originals).
+if [ -d {quoted_workdir} ]; then
+    cd {quoted_workdir}
+    if [ -f .venv/bin/python ]; then
+        . .venv/bin/activate 2>/dev/null || true
+    fi
+    python3 -c "from harness.reboot.idle import save_idle_state, disable_idle; save_idle_state(); r = disable_idle(); print('[idle] pre-pytest: applied', len(r['applied']), 'readback_ok', r['readback_ok']); [print('[idle] pre-pytest ERROR:', e) for e in r['errors']]" 2>&1 | tee -a "$LOG_FILE" || true
+fi
+
 # Do NOT open a terminal window during the run — it can cover the screen
 # and interfere with GUI automation (screenshots, clicks).
 # Progress is logged to $LOG_FILE and a desktop notification is shown.
@@ -158,6 +195,7 @@ echo "$ATTEMPTS" > {quoted_attempts}
 if [ "$ATTEMPTS" -gt {max_attempts} ]; then
     echo "resume attempt limit reached ($ATTEMPTS > {max_attempts}); giving up" >&2
     echo "RESUME LIMIT REACHED: this boot will idle (please intervene)" | tee -a "$LOG_FILE" >&2
+    : > {quoted_run_dir}/resume/{RESUME_GAVE_UP_NAME}
     if command -v notify-send >/dev/null 2>&1; then
         notify-send -u critical "GUI Testing" "Resume attempt limit reached — run gave up." >/dev/null 2>&1 || true
     fi
@@ -169,8 +207,12 @@ cd {quoted_workdir}
 echo "=== Resuming pytest run: {quoted_run_dir} ===" | tee -a "$LOG_FILE"
 echo "Started at: $(date)" | tee -a "$LOG_FILE"
 echo "Attempt $ATTEMPTS of max {max_attempts}" | tee -a "$LOG_FILE"
-{command} -s --resume-run {quoted_run_dir} 2>&1 | tee -a "$LOG_FILE"
-status=${{PIPESTATUS[0]}}
+# Append directly instead of piping through tee: PIPESTATUS is a bashism, and
+# this script runs under /bin/sh (dash on Ubuntu), where the substitution is a
+# fatal error that skipped the disable below and re-armed the unit every boot.
+# systemd already sends the unit's output to the journal (journalctl --user).
+{command} -s --resume-run {quoted_run_dir} >>"$LOG_FILE" 2>&1
+status=$?
 # One parameter set per reboot: do not start again on the next boot.
 systemctl --user disable {UNIT_NAME} >/dev/null 2>&1 || true
 exit "$status"
@@ -289,23 +331,19 @@ def remove_resume_unit(*, username: str | None = None) -> bool:
     # Just remove the unit files directly.
     pass
 
-    # Remove unit files.
+    # Remove unit files and their ``enable`` symlink (a bare unlink of the
+    # unit file would leave the wants symlink dangling).
     removed_any = False
     for up in unique_paths:
-        try:
-            up.unlink()
-            removed_any = True
-        except FileNotFoundError:
-            removed_any = True
-        except OSError:
+        for path in (up, up.parent / "graphical-session.target.wants" / UNIT_NAME):
             try:
-                subprocess.run(
-                    ["sudo", "-n", "rm", "-f", str(up)],
-                    capture_output=True, text=True, timeout=10,
-                )
+                path.unlink()
                 removed_any = True
-            except (OSError, subprocess.SubprocessError):
+            except FileNotFoundError:
                 pass
+            except OSError:
+                if priv_cleanup_unit(up):
+                    removed_any = True
 
     # Daemon reload (skip - can hang, not critical for cleanup).
     pass

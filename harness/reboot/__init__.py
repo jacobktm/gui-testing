@@ -24,13 +24,13 @@ from dataclasses import dataclass
 from pathlib import Path
 import os
 import pwd
+import subprocess
 import sys
 
 from .autostart import ResumePlan, install_resume_unit, remove_resume_unit
+from .helper import HELPER_PATH, UNIT_FILE_NAME, priv_cleanup_sudoers, priv_cleanup_unit
 from .idle import disable_idle, restore_idle, save_idle_state
 from .resume import (
-    ResumeState,
-    bump_attempts,
     load_completed,
     record_completed,
     resume_dir,
@@ -57,8 +57,6 @@ __all__ = [
     "DesktopSession",
     "RebootSetup",
     "ResumePlan",
-    "ResumeState",
-    "bump_attempts",
     "detect_desktop",
     "detect_display_manager",
     "detect_gui_user",
@@ -134,11 +132,17 @@ def prepare_reboot(
     return RebootSetup(session=session, autologin=autologin, resume=resume)
 
 
-def finish_reboot(*, username: str | None = None) -> bool:
+def finish_reboot(*, username: str | None = None, revoke_sudoers: bool = True) -> bool:
     """Remove the resume unit and restore the original autologin config.
 
     Tries multiple users and locations to ensure cleanup happens even if
     the detected user is wrong (common on Pop!_OS GNOME/COSMIC).
+
+    ``revoke_sudoers=False`` keeps the passwordless sudo rule in place; the
+    caller is then responsible for removing it *after* its last reboot
+    attempt (conftest does).  Either way the boot-time recovery unit
+    (:mod:`harness.reboot.recovery`) guarantees the grant cannot outlive the
+    run.
     """
     print("[finish_reboot] START", file=sys.stderr, flush=True)
     try:
@@ -157,81 +161,83 @@ def finish_reboot(*, username: str | None = None) -> bool:
         pass
 
     unit_removed = False
-    # Remove unit files directly (skip systemctl which can hang).
+    # Remove unit files directly (skip systemctl which can hang).  The helper
+    # also clears the ``.wants`` symlink, and only accepts harness unit paths.
     for u in users_to_try:
         print(f"[finish_reboot] removing resume unit for {u}", file=sys.stderr, flush=True)
         try:
-            from .autostart import unit_path_for
-            up = unit_path_for(u)
-            try:
-                up.unlink()
-                unit_removed = True
-                print(f"[finish_reboot] removed unit file: {up}", file=sys.stderr, flush=True)
-            except FileNotFoundError:
-                unit_removed = True
-            except OSError:
+            from .autostart import unit_path_for, wants_path_for
+            unit_file = unit_path_for(u)
+            for leftover in (unit_file, wants_path_for(u)):
                 try:
-                    subprocess.run(
-                        ["sudo", "-n", "rm", "-f", str(up)],
-                        capture_output=True, text=True, timeout=5,
-                    )
+                    leftover.unlink()
                     unit_removed = True
-                except Exception:
-                    pass
+                    print(f"[finish_reboot] removed unit file: {leftover}", file=sys.stderr, flush=True)
+                except FileNotFoundError:
+                    unit_removed = True
+                except OSError:
+                    if priv_cleanup_unit(unit_file):
+                        unit_removed = True
         except Exception as e:
             print(f"[finish_reboot] remove_resume_unit({u}) exception: {e}", file=sys.stderr, flush=True)
 
     # Also try to find unit files in all home directories.
-    for home in Path("/home").iterdir():
+    try:
+        homes = list(Path("/home").iterdir())
+    except OSError:
+        homes = []
+    for home in homes:
         if not home.is_dir():
             continue
-        unit_file = home / ".config" / "systemd" / "user" / "gui-testing-resume.service"
-        if unit_file.exists():
+        unit_dir = home / ".config" / "systemd" / "user"
+        unit_file = unit_dir / UNIT_FILE_NAME
+        wants_file = unit_dir / "graphical-session.target.wants" / UNIT_FILE_NAME
+        if unit_file.exists() or wants_file.is_symlink():
             print(f"[finish_reboot] found unit file: {unit_file}", file=sys.stderr, flush=True)
-            try:
-                unit_file.unlink()
-                unit_removed = True
-            except OSError:
+            for leftover in (unit_file, wants_file):
                 try:
-                    subprocess.run(
-                        ["sudo", "-n", "rm", "-f", str(unit_file)],
-                        capture_output=True, text=True, timeout=5,
-                    )
+                    leftover.unlink()
                     unit_removed = True
-                except Exception:
+                except FileNotFoundError:
                     pass
+                except OSError:
+                    if priv_cleanup_unit(unit_file):
+                        unit_removed = True
 
     # For COSMIC, try force_restore first (doesn't depend on state file).
     restored = False
-    # Try via sudo (sudoers may still be in place).
-    try:
-        import subprocess
-        r = subprocess.run(
-            ["sudo", "-n", "python3", "-m", "harness.reboot", "force-restore"],
-            capture_output=True, text=True, timeout=10,
-        )
-        print(f"[finish_reboot] sudo force-restore: rc={r.returncode} stdout={r.stdout.strip()} stderr={r.stderr.strip()}", file=sys.stderr, flush=True)
-        if r.returncode == 0:
-            restored = True
-    except Exception as e:
-        print(f"[finish_reboot] sudo force-restore exception: {e}", file=sys.stderr, flush=True)
-    # Fallback: try in-process (works if running as root).
-    if not restored:
+    if os.geteuid() == 0:
+        # Already root (e.g. the boot-time recovery unit invoking ``recover``
+        # through the helper): work in-process, because the sudoers grant may
+        # already be revoked and shelling out to the helper would fail.
         try:
-            from .session import force_restore_autologin
             restored = force_restore_autologin()
-            print(f"[finish_reboot] in-process force_restore: {restored}", file=sys.stderr, flush=True)
+            print(f"[finish_reboot] in-process force_restore (root): {restored}", file=sys.stderr, flush=True)
         except Exception as e:
             print(f"[finish_reboot] in-process force_restore exception: {e}", file=sys.stderr, flush=True)
+    else:
+        # Try via the whitelisted privileged helper.
+        try:
+            r = subprocess.run(
+                ["sudo", "-n", str(HELPER_PATH), "force-restore"],
+                capture_output=True, text=True, timeout=10,
+            )
+            print(f"[finish_reboot] sudo force-restore: rc={r.returncode} stdout={r.stdout.strip()} stderr={r.stderr.strip()}", file=sys.stderr, flush=True)
+            if r.returncode == 0:
+                restored = True
+        except Exception as e:
+            print(f"[finish_reboot] sudo force-restore exception: {e}", file=sys.stderr, flush=True)
+        if not restored:
+            # Fallback: try in-process (works on readable-but-not-writable configs).
+            try:
+                restored = force_restore_autologin()
+                print(f"[finish_reboot] in-process force_restore: {restored}", file=sys.stderr, flush=True)
+            except Exception as e:
+                print(f"[finish_reboot] in-process force_restore exception: {e}", file=sys.stderr, flush=True)
     if not restored:
         restored = restore_autologin()
         print(f"[finish_reboot] restore_autologin: {restored}", file=sys.stderr, flush=True)
-    # Clean up persistent reboot marker.
-    if username:
-        try:
-            from handlers.system76_power import System76Power
-        except Exception:
-            pass
+    # Clean up persistent reboot markers for every run directory.
     try:
         # Find and remove persistent markers in all run dirs.
         artifacts_root = Path(os.environ.get("GUI_TESTING_ARTIFACTS", "artifacts"))
@@ -244,18 +250,11 @@ def finish_reboot(*, username: str | None = None) -> bool:
                 pass
     except Exception:
         pass
-    # Also try removing from the run dir if available.
-    try:
-        run_dir = getattr(getattr(finish_reboot, "_last_run_dir", None), None, None)
-    except Exception:
-        pass
 
-    # Also try to clean up sudoers (best-effort).
-    try:
-        subprocess.run(
-            ["sudo", "-n", "rm", "-f", "/etc/sudoers.d/gui-testing"],
-            capture_output=True, text=True, timeout=10,
-        )
-    except Exception:
-        pass
+    # Also try to clean up sudoers (best-effort).  Removal goes through the
+    # helper; the grant is never rewritten, only revoked.  Callers that still
+    # need to reboot after this pass revoke_sudoers=False and revoke it
+    # themselves; the boot-time recovery unit is the backstop either way.
+    if revoke_sudoers and priv_cleanup_sudoers():
+        print("[finish_reboot] removed sudoers rule", file=sys.stderr, flush=True)
     return bool(unit_removed or restored)

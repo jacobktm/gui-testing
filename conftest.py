@@ -100,17 +100,57 @@ def _finalize_run(config) -> None:
     if run is None or getattr(config, "_gui_finalized", False):
         return
     config._gui_finalized = True
+
+    # The report and the run status are driven by the pytest outcomes
+    # themselves.  completed.json holds every test that reached a call-phase
+    # verdict on *any* boot of this run; _gui_pytest_results holds this boot's
+    # verdicts for every phase (including tests re-reported from the resume
+    # override, whose verdicts re-enter via the completed ledger).
+    results: dict[str, str] = {}
+    try:
+        results.update(load_completed(run.run_dir))
+    except Exception as error:
+        print(f"report: could not load completed ledger: {error}", flush=True)
+    results.update(getattr(config, "_gui_pytest_results", {}))
+    collected = list(getattr(config, "_gui_collected_nodeids", []))
+    not_run = [nodeid for nodeid in collected if nodeid not in results]
+
+    counts = {"passed": 0, "failed": 0, "error": 0, "skipped": 0}
+    for verdict in results.values():
+        counts[verdict] = counts.get(verdict, 0) + 1
+    counts["not_run"] = len(not_run)
+    unknown_items = sum(
+        1 for entry in run.manifest.tests
+        if entry.get("status", "unknown") == "unknown"
+    )
+
+    # A run only "passed" if every collected test actually ran and none
+    # failed; leftover unknown evidence, un-run tests, or an all-skipped
+    # session are all "unknown", which KeepFailures treats as non-passing.
+    if counts["failed"] or counts["error"]:
+        run_status = "failed"
+    elif counts["not_run"] or unknown_items or not (counts["passed"] or counts["failed"]):
+        run_status = "unknown"
+    else:
+        run_status = "passed"
+
+    run.manifest.metadata["pytest_results"] = results
+    run.manifest.metadata["pytest_not_run"] = not_run
     try:
         plan = RetentionPlan((KeepLast(10), KeepFailures()))
-        run.finalize(retention_plan=plan)
-    except Exception:
-        run.finalize()
+        run.finalize(status=run_status, summary=counts, retention_plan=plan)
+    except Exception as error:
+        print(f"report: finalize failed ({error}); retrying without retention", flush=True)
+        try:
+            run.finalize(status=run_status, summary=counts)
+        except Exception as error2:
+            print(f"report: finalize failed entirely: {error2}", flush=True)
     try:
         from harness.report import ReportWriter
         ReportWriter(run).write_text()
         ReportWriter(run).archive()
-    except Exception:
-        pass
+    except Exception as error:
+        print(f"report: writing/archiving failed: {error}", flush=True)
 
 
 def pytest_addoption(parser):
@@ -131,7 +171,12 @@ def pytest_configure(config):
         from harness.reboot.idle import disable_idle, save_idle_state
 
         save_idle_state()
-        disable_idle()
+        report = disable_idle()
+        config._gui_idle_report = report
+        for err in report["errors"]:
+            print(f"[idle] ERROR: {err}", flush=True)
+        if not report["applied"] or report["readback_ok"] is False:
+            print("[idle] WARNING: idle protection is NOT active — GUI tests may hit a locked screen", flush=True)
     except Exception as error:  # never fail a run over this
         print(f"[idle] setup failed: {type(error).__name__}: {error}", flush=True)
 
@@ -139,7 +184,6 @@ def pytest_configure(config):
     # Force re-detection on resumed runs (after reboot).
     try:
         from harness.gui.coords import cache_display_geometry
-        import os
         force = os.environ.get("GUI_TESTING_RESUMED") == "1"
         cache_display_geometry(force=force)
     except Exception:
@@ -164,7 +208,7 @@ def pytest_configure(config):
     # Save original graphics mode before tests run (for cleanup restore).
     try:
         from handlers.system76_power import System76Power
-        from harness.power_state import save_original_graphics_mode_from
+        from handlers.system76_power.power_state import save_original_graphics_mode_from
         h = System76Power()
         save_original_graphics_mode_from(h)
     except Exception:
@@ -180,6 +224,10 @@ def pytest_configure(config):
     config._gui_reboot_setup = None
     config._gui_reboot_error = None
     config._gui_reboot_finished = False
+    # nodeid -> verdict (passed/failed/skipped/error) for this boot's runs,
+    # the input to test_report.txt and the run status.
+    config._gui_pytest_results = {}
+    config._gui_collected_nodeids = []
 
 
 def pytest_collection_modifyitems(config, items):
@@ -223,11 +271,17 @@ def pytest_collection_modifyitems(config, items):
         if item.get_closest_marker("reboot") and not item.get_closest_marker("skip")
     ]
 
-    # Run screenshot permission test first (grants permission for all later screenshots).
+    # Run the idle-guard test first: if idle/lock protection never took
+    # effect, nothing GUI later in the run can be trusted, and a reboot test
+    # must not start only to strand a locked session mid-multi-boot-run.
+    # Run screenshot permission test next (grants permission for all later
+    # screenshots).
     # Run graphics power toggle tests last (they can leave the GPU in a bad
     # state that affects subsequent tests).
     def _sort_key(item):
         name = getattr(item, "name", "") or ""
+        if "idle_protection" in name:
+            return -2
         if "screenshot_permission" in name:
             return -1
         if "graphics_power" in name:
@@ -235,6 +289,9 @@ def pytest_collection_modifyitems(config, items):
         return 0
 
     items.sort(key=_sort_key)
+    # Remember what this boot collected so the report can flag tests that
+    # never ran (interrupted session, killed reboot, collection gaps).
+    config._gui_collected_nodeids = [item.nodeid for item in items]
 
 
 def pytest_collection_finish(session):
@@ -247,6 +304,14 @@ def pytest_collection_finish(session):
         return
 
     run = _ensure_run(config)
+    # Refresh the "run in progress" marker on every boot of a multi-boot run
+    # (this hook runs on resumed runs too), so the boot-time recovery unit
+    # leaves the harness setup alone while the run is live.
+    try:
+        from harness.reboot.recovery import mark_run_active
+        mark_run_active(run.run_dir)
+    except Exception as error:
+        print(f"GUI testing: run marker failed: {error}", flush=True)
     # On a resumed run the autologin config and resume unit are already in
     # place from the initial run, so skip the (privileged) setup step.
     if config._gui_resume_requested or getattr(config, "_gui_resumed", False):
@@ -303,16 +368,25 @@ def pytest_sessionfinish(session, exitstatus):
     username = None
     if setup is not None:
         username = setup.username
-    elif getattr(config, "_gui_resumed", False) or config._gui_resume_requested:
+    elif (
+        getattr(config, "_gui_resumed", False)
+        or config._gui_resume_requested
+        or os.environ.get("GUI_TESTING_SETUP_DONE") == "1"
+    ):
+        # Resumed runs skip prepare_reboot, and a pytest.sh run did the setup
+        # out-of-process — either way, resolve the user and clean up anyway.
         from harness.reboot import detect_gui_user
         username = detect_gui_user()
     if username is None:
         return
     # A reboot kills this process, so this only runs once the run really
     # finishes (or is interrupted); restore the machine either way.
+    # revoke_sudoers=False: the final reboot below still needs the grant;
+    # it is removed after the last reboot attempt, and the boot-time recovery
+    # unit is the backstop if this process dies to that reboot.
     print("CLEANUP: calling finish_reboot", flush=True)
     try:
-        finish_reboot(username=username)
+        finish_reboot(username=username, revoke_sudoers=False)
         print("CLEANUP: finish_reboot done", flush=True)
     except Exception as e:
         print(f"CLEANUP: finish_reboot EXCEPTION: {e}", flush=True)
@@ -324,10 +398,19 @@ def pytest_sessionfinish(session, exitstatus):
         traceback.print_exc()
     config._gui_reboot_finished = True
 
+    # From here on no run is live: drop the marker *before* any of the reboots
+    # below, so the boot-time recovery unit finishes the teardown (sudoers
+    # revoke included) if the final reboot kills this process first.
+    try:
+        from harness.reboot.recovery import clear_run_active
+        clear_run_active()
+    except Exception:
+        pass
+
     # Restore original graphics mode last thing before final reboot.
     try:
         from handlers.system76_power import System76Power
-        from harness.power_state import restore_original_graphics_mode
+        from handlers.system76_power.power_state import restore_original_graphics_mode
         h = System76Power()
         if restore_original_graphics_mode(h):
             from harness.reboot.system import reboot, wait_for_boot
@@ -358,11 +441,8 @@ def pytest_sessionfinish(session, exitstatus):
     if os.environ.get("GUI_TESTING_SETUP_DONE") == "1":
         print("CLEANUP: removing sudoers rule", flush=True)
         try:
-            r = subprocess.run(
-                ["sudo", "-n", "python3", "-m", "harness.reboot", "cleanup"],
-                capture_output=True, text=True, timeout=10,
-            )
-            print(f"CLEANUP: sudoers cleanup rc={r.returncode} stdout={r.stdout.strip()} stderr={r.stderr.strip()}", flush=True)
+            from harness.reboot.helper import priv_cleanup_sudoers
+            print(f"CLEANUP: sudoers cleanup: {priv_cleanup_sudoers()}", flush=True)
         except Exception as e:
             print(f"CLEANUP: sudoers cleanup exception: {e}", flush=True)
 
@@ -400,32 +480,50 @@ def pytest_runtest_makereport(item, call):
             if not report.longrepr:
                 report.longrepr = "Failed in previous run before reboot"
 
+    # Feed the per-test verdicts that drive test_report.txt and the run
+    # status: the worst outcome across setup/call/teardown wins.
+    verdicts = getattr(item.config, "_gui_pytest_results", None)
+    if verdicts is not None:
+        if report.when == "call":
+            recorded = report.outcome
+        elif report.outcome == "failed":
+            recorded = "error"
+        elif report.outcome == "skipped":
+            recorded = "skipped"
+        else:
+            recorded = None
+        if recorded in ("passed", "failed", "skipped", "error"):
+            severity = {"passed": 1, "skipped": 2, "failed": 3, "error": 3}
+            previous = verdicts.get(item.nodeid)
+            if previous is None or severity[recorded] >= severity[previous]:
+                verdicts[item.nodeid] = recorded
+
     # Record completed tests with their actual outcome.
     if report.when == "call" and report.outcome in ("passed", "failed") and stored_outcome is None:
         run_dir = getattr(item.config, "_gui_resume_dir", None)
         if run_dir is not None:
             try:
                 record_completed(run_dir, item.nodeid, outcome=report.outcome)
-            except Exception:
-                pass
-        # Update manifest entries created during this test, plus any
-        # pre-existing entries with the same item id.
+            except Exception as error:
+                print(f"GUI testing: could not record completion: {error}", flush=True)
+        # Stamp manifest entries *created during this test* with its outcome:
+        # those belong to this test's workflow.  Entries that already existed
+        # before the test started belong to other tests (or earlier boots of
+        # this run) and must never be stamped with this test's outcome —
+        # that fabricated passes for tests that never completed.
         try:
             run = getattr(item.config, "_gui_run", None)
             if run is not None:
                 before = getattr(item, "_manifest_count_before", 0)
-                # Update new entries.
+                stamped = False
                 for entry in run.manifest.tests[before:]:
                     if entry.get("status", "unknown") == "unknown":
                         entry["status"] = report.outcome
-                # Also update any pre-existing entries that are still unknown
-                # (e.g., from a previous invocation before reboot).
-                for entry in run.manifest.tests[:before]:
-                    if entry.get("status", "unknown") == "unknown":
-                        entry["status"] = report.outcome
-                run._save()
-        except Exception:
-            pass
+                        stamped = True
+                if stamped:
+                    run._save()
+        except Exception as error:
+            print(f"GUI testing: could not stamp manifest entries: {error}", flush=True)
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):

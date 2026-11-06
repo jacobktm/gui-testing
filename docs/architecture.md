@@ -51,7 +51,7 @@ Workflows implement test logic for specific applications. Moved out of harness t
 | `system76_power/base_workflow.py` | Base workflow with common system76-power operations |
 | `system76_power/cli.py` | CLI-focused workflows (profile queries, transitions via CLI) |
 | `system76_power/gui.py` | GUI-focused workflows (navigating settings UI) |
-| `system76_power/transitions.py` | `ProfileTransitionWorkflow`, `GraphicsTransitionWorkflow` - high-level transition orchestration |
+| `system76_power/transitions.py` | `ProfileTransitionWorkflow` - UI validation of power profiles (graphics transitions share `graphics_transitions.py`) |
 
 ### Tests (`tests/`) - Test Cases
 

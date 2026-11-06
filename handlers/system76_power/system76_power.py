@@ -1,3 +1,4 @@
+import json
 import os
 import signal
 import subprocess
@@ -5,7 +6,18 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-__all__ = ["System76Power"]
+__all__ = ["System76Power", "GraphicsSwitchingUnsupported", "probe_switchable"]
+
+
+class GraphicsSwitchingUnsupported(RuntimeError):
+    """The CLI reports graphics switching is unavailable on this system.
+
+    ``system76-power graphics switchable`` exits non-zero when the OS does
+    not provide graphics switching (COSMIC-era installs) or the device lacks
+    an iGPU+dGPU pair (desktops).  The refusal carries the CLI's message, so
+    callers can assert on it.  Gating code that treats availability as data
+    should use :func:`probe_switchable` instead of letting this propagate.
+    """
 
 
 class System76Power:
@@ -178,30 +190,28 @@ class System76Power:
                         except (OSError, ProcessLookupError):
                             pass
         # All retries exhausted.
+        if last_exc is None:
+            raise RuntimeError(f"command failed without an exception: {cmd}")
         raise last_exc
 
     def switchable(self):
+        """Return ``'switchable'``/``'not switchable'``, or raise.
+
+        Raises :class:`GraphicsSwitchingUnsupported` when the CLI refuses the
+        graphics subcommands.  (The old implementation string-guessed the
+        stderr and leaked the raw message into the *result* when its
+        heuristic missed, which made the membership assertion in the probe
+        test fail on every non-switchable run log.)
+        """
         result = self._run(['system76-power', 'graphics', 'switchable'], check=False, timeout=60.0)
         print(f"  [switchable] rc={result.get('returncode')} stdout={result.get('stdout', '').strip()!r} stderr={result.get('stderr', '').strip()!r}", flush=True)
         stdout = (result.get('stdout') or '').strip()
         stderr = (result.get('stderr') or '').strip()
-        if stdout:
-            # Current behavior for switchable systems
-            if stdout == 'switchable':
-                return 'switchable'
-            if stdout == 'not switchable':
-                return 'not switchable'
+        if stdout in ('switchable', 'not switchable'):
             return stdout
-        # New behavior: non-switchable systems error out when graphics subcommands are used
-        if stderr:
-            if 'not switchable' in stderr.lower() or 'not supported' in stderr.lower() or 'no switchable' in stderr.lower():
-                self._log({'type': 'switchable_not_switchable', 'stderr': stderr})
-                return 'not switchable'
-            self._log({'type': 'switchable_unknown_error', 'stderr': stderr})
-            return stderr
-        if result.get('returncode') not in (0, None):
-            return 'not switchable'
-        return 'unknown'
+        message = stdout or stderr or f"exit code {result.get('returncode')!r}"
+        self._log({'type': 'switchable_unsupported', 'stdout': stdout, 'stderr': stderr})
+        raise GraphicsSwitchingUnsupported(f"graphics switching unavailable: {message}")
 
     def switch_perf_profile(self, profile=None):
         if not profile:
@@ -340,3 +350,21 @@ class System76Power:
             check=False,
         )
         return result.get("returncode") == 0
+
+
+def probe_switchable(handler: System76Power) -> str:
+    """Never-raising capability probe: ``'switchable'`` or ``'not switchable'``.
+
+    Skip-gating call sites (transition tests, detection tests, the shared
+    mixin) treat graphics-switching *availability* as data, not as a
+    failure, so the typed :class:`GraphicsSwitchingUnsupported` from
+    :meth:`System76Power.switchable` is mapped to ``'not switchable'`` here.
+    Unexpected errors (e.g. timeouts) still propagate — those are real
+    problems, not capability statements.  Use ``switchable()`` directly when
+    the caller wants to assert on the refusal message.
+    """
+    try:
+        result = handler.switchable()
+    except GraphicsSwitchingUnsupported:
+        return "not switchable"
+    return result if result in ("switchable", "not switchable") else "not switchable"

@@ -1,10 +1,11 @@
 """Set-of-Mark (SoM) UI element detection.
 
 Uses OpenCV to detect UI elements in a screenshot, annotates them with
-numbered IDs, and asks Ollama to identify which ID corresponds to a
-target element.  The coordinates are then looked up from the element map.
+numbered IDs, and asks the configured vision LLM (harness.llm_client) to
+identify which ID corresponds to a target element.  The coordinates are
+then looked up from the element map.
 
-This is more reliable than asking Ollama for raw coordinates, because
+This is more reliable than asking the LLM for raw coordinates, because
 LLMs are good at identifying labeled elements but bad at precise
 coordinate detection.
 """
@@ -161,24 +162,26 @@ def ocr_element_text(image_path: str, bbox: tuple) -> str:
 def ask_vlm_for_element(
     annotated_image_path: str,
     target_description: str,
-    model: str = "qwen3-vl:8b",
-    ip: str = "127.0.0.1",
-    port: str = "11434",
+    llm=None,
 ) -> int | None:
-    """Ask Ollama which numbered ID corresponds to the target element."""
-    import ollama as _ollama
-    client = _ollama.Client(host=f"http://{ip}:{port}")
+    """Ask the configured VLM which numbered ID corresponds to the target element.
+
+    ``llm`` is any object with ``model``/``client`` attrs and a
+    ``send_message(content, images)`` method (see harness.llm_client); it
+    knows nothing about which provider is behind it. Defaults to the
+    provider selected in config.json.
+    """
+    if llm is None:
+        from ..llm_client import get_llm_client
+        llm = get_llm_client()
     prompt = f"Scan this annotated screenshot. Each green box has an ID number. Find the UI element that is currently selected or highlighted (it may have a checkmark, different color, or bold text next to it). What is the green ID number of that element? State only the number."
     try:
-        response = client.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt, "images": [annotated_image_path]}],
-            options={"num_ctx": 8192},
-        )
-        raw = response["message"]["content"].strip()
-        match = re.search(r"\d+", raw)
-        if match:
-            return int(match.group(0))
+        if llm.client and llm.model:
+            raw = llm.send_message(prompt, [annotated_image_path])
+            if raw:
+                match = re.search(r"\d+", raw)
+                if match:
+                    return int(match.group(0))
     except Exception:
         pass
     return None
@@ -188,12 +191,13 @@ def detect_element_coords(
     image_path: str | Path,
     target_description: str,
     *,
-    ollama_ip: str = "127.0.0.1",
-    ollama_port: str = "11434",
-    ollama_model: str = "qwen3-vl:8b",
+    llm=None,
     min_size: int = 10,
 ) -> tuple[float, float] | None:
     """Full pipeline: detect elements, annotate, ask VLM, return normalized coords.
+
+    ``llm`` is a configured LLM client (see harness.llm_client); when
+    omitted, the provider selected in config.json is used.
 
     Returns (x, y) in 0-1 range, or None if detection fails.
     """
@@ -207,8 +211,7 @@ def detect_element_coords(
         return None
 
     selected_id = ask_vlm_for_element(
-        som_path, target_description,
-        model=ollama_model, ip=ollama_ip, port=ollama_port,
+        som_path, target_description, llm=llm,
     )
     if selected_id is None or selected_id not in element_map:
         return None

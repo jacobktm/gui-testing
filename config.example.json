@@ -1,8 +1,16 @@
 {
-  "ollama": {
-    "REMOTE_OLLAMA_IP": "<ollama-host-ip>",
-    "REMOTE_OLLAMA_PORT": "11434",
-    "model": "<ollama-model-name>"
+  "llm": {
+    "provider": "ollama",
+    "ollama": {
+      "REMOTE_OLLAMA_IP": "<llm-host-ip>",
+      "REMOTE_OLLAMA_PORT": "11434",
+      "model": "<ollama-vision-model>"
+    },
+    "strata": {
+      "host": "<strata-host-ip>",
+      "port": "8080",
+      "model": "<strata-vision-model>"
+    }
   },
   "screenshot_tool": "cosmic-screenshot"
 }

@@ -97,7 +97,7 @@ class UIWorkflow(Workflow):
 
             # Query LLM
             try:
-                resp = self.driver.ollama.send_message(prompt, [str(crop.path)])
+                resp = self.driver.llm.send_message(prompt, [str(crop.path)])
                 if not resp or not resp.strip():
                     print(f"[detect_from_ui] attempt {attempt} empty response")
                     try:

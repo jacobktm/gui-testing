@@ -41,7 +41,7 @@ from harness.gui.set_of_mark import generate_set_of_mark, detect_element_coords
 ```
 
 - `generate_set_of_mark(image_path)` - Detect UI elements and create annotated image with labels
-- `detect_element_coords(image_path, target_description, ollama_ip, ollama_port, ollama_model)` - Get coordinates for target
+- `detect_element_coords(image_path, target_description, llm=None)` - Get coordinates for target; `llm` is a configured LLM client from `harness.llm_client` (defaults to the provider selected in config.json)
 
 ### Screenshots (`harness.screenshots`)
 
@@ -135,26 +135,28 @@ if result.success:
 ```python
 from harness.gui.set_of_mark import detect_element_coords
 
+# Uses the LLM provider selected in config.json:
 coords = detect_element_coords(
     "/tmp/screenshot.png",
     "the Apply button",
-    ollama_ip="localhost",
-    ollama_port="11434",
-    ollama_model="qwen3-vl:8b"
 )
 ```
 
 ## Configuration
 
-### Ollama
+### LLM provider
 
-Configure in `config.json`:
+Configure in `config.json` (`provider` is `ollama` or `strata`; see
+`docs/configuration.md` for all keys):
 ```json
 {
-  "ollama": {
-    "REMOTE_OLLAMA_IP": "192.168.1.100",
-    "REMOTE_OLLAMA_PORT": "11434",
-    "model": "qwen3-vl:8b"
+  "llm": {
+    "provider": "ollama",
+    "ollama": {
+      "REMOTE_OLLAMA_IP": "192.168.1.100",
+      "REMOTE_OLLAMA_PORT": "11434",
+      "model": "qwen3-vl:8b"
+    }
   }
 }
 ```
@@ -196,8 +198,8 @@ Set in config or auto-detected by `setup.sh`:
 - Check coordinate scaling
 - Ensure using correct display
 
-### Ollama issues
-- Verify Ollama is running and accessible
-- Check model is pulled
+### LLM provider issues
+- Verify the configured LLM server (Ollama or Strata) is running and accessible
+- Check the model is loaded/pulled and supports vision (multimodal; for Strata a GGUF with mmproj)
 - Ensure sufficient GPU memory
 - Check network connectivity if remote

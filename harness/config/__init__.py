@@ -1,15 +1,13 @@
 from .config import (
+    llm_config,
     ollama_config,
-    set_ollama_ip,
-    set_ollama_port,
-    set_ollama_model,
+    strata_config,
     get_screenshot_tool,
 )
 
 __all__ = [
+    "llm_config",
     "ollama_config",
-    "set_ollama_ip",
-    "set_ollama_port",
-    "set_ollama_model",
+    "strata_config",
     "get_screenshot_tool",
 ]

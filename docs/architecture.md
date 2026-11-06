@@ -19,7 +19,7 @@ The harness provides reusable primitives for GUI/CLI automation.
 |--------|---------|
 | `screenshots/` | Capture screenshots using desktop-appropriate tools (cosmic-screenshot, gnome-dotool) |
 | `gui/` | GuiDriver for input simulation, Set-of-Mark detection, coordinate transformation |
-| `ollama_client/` | HTTP client for Ollama API, handles image encoding |
+| `llm_client/` | LLM provider clients (Ollama native API, Strata OpenAI-compatible API), factory selected by config |
 | `dotool/` | Low-level input injection via dotool (mouse/keyboard) |
 | `detection/` | Parse LLM responses into structured data |
 | `imageutils/` | Image processing utilities (cropping, etc.) |

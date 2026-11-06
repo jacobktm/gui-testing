@@ -213,80 +213,167 @@ is_populated() {
     [[ -n "$value" ]]
 }
 
-echo "=== Ollama Configuration Check ==="
-
-cur_ip=$(echo "$CONFIG_JSON" | jq -r '.ollama.REMOTE_OLLAMA_IP // empty')
-cur_port=$(echo "$CONFIG_JSON" | jq -r '.ollama.REMOTE_OLLAMA_PORT // empty')
-cur_model=$(echo "$CONFIG_JSON" | jq -r '.ollama.model // empty')
+echo "=== LLM Provider Configuration Check ==="
+cur_provider=$(echo "$CONFIG_JSON" | jq -r '.llm.provider // empty')
 
 if [ "$UPDATE_MODE" == true ]; then
-    read -p "Enter Remote Ollama IP [${cur_ip:-none}]: " ollama_ip
-    ollama_ip="${ollama_ip:-$cur_ip}"
-
-    read -p "Enter Remote Ollama Port [${cur_port:-11434}]: " ollama_port
-    ollama_port="${ollama_port:-${cur_port:-11434}}"
-
-    read -p "Enter Ollama Model Name [${cur_model:-none}]: " ollama_model
-    ollama_model="${ollama_model:-$cur_model}"
+    read -p "Enter LLM Provider (ollama/strata) [${cur_provider:-ollama}]: " llm_provider
+    llm_provider="${llm_provider:-${cur_provider:-ollama}}"
 else
-    if is_populated ".ollama.REMOTE_OLLAMA_IP"; then
-        ollama_ip="$cur_ip"
-        echo "-> Ollama IP already populated: $ollama_ip"
+    if is_populated ".llm.provider"; then
+        llm_provider="$cur_provider"
+        echo "-> LLM provider already populated: $llm_provider"
     else
-        read -p "Enter Remote Ollama IP: " ollama_ip
+        read -p "Enter LLM Provider (ollama/strata) [default: ollama]: " llm_provider
+        llm_provider="${llm_provider:-ollama}"
     fi
+fi
 
-    if is_populated ".ollama.REMOTE_OLLAMA_PORT"; then
-        ollama_port="$cur_port"
-        echo "-> Ollama Port already populated: $ollama_port"
-    else
-        read -p "Enter Remote Ollama Port [default: 11434]: " ollama_port
-        ollama_port="${ollama_port:-11434}"
-    fi
+case "$llm_provider" in
+    ollama|strata) ;;
+    *)
+        echo "-> Unknown provider '$llm_provider'; using ollama."
+        llm_provider="ollama"
+        ;;
+esac
 
-    if is_populated ".ollama.model"; then
-        ollama_model="$cur_model"
-        echo "-> Ollama Model already populated: $ollama_model"
+# Only the selected provider's settings are prompted for and stored.
+ollama_ip="" ; ollama_port="" ; ollama_model=""
+strata_host="" ; strata_port="" ; strata_model="" ; strata_api_key=""
+
+if [ "$llm_provider" == "ollama" ]; then
+    cur_ip=$(echo "$CONFIG_JSON" | jq -r '.llm.ollama.REMOTE_OLLAMA_IP // empty')
+    cur_port=$(echo "$CONFIG_JSON" | jq -r '.llm.ollama.REMOTE_OLLAMA_PORT // empty')
+    cur_model=$(echo "$CONFIG_JSON" | jq -r '.llm.ollama.model // empty')
+
+    if [ "$UPDATE_MODE" == true ]; then
+        read -p "Enter Remote Ollama IP [${cur_ip:-none}]: " ollama_ip
+        ollama_ip="${ollama_ip:-$cur_ip}"
+
+        read -p "Enter Remote Ollama Port [${cur_port:-11434}]: " ollama_port
+        ollama_port="${ollama_port:-${cur_port:-11434}}"
+
+        read -p "Enter Ollama Model Name [${cur_model:-none}]: " ollama_model
+        ollama_model="${ollama_model:-$cur_model}"
     else
-        read -p "Enter Ollama Model Name: " ollama_model
+        if is_populated ".llm.ollama.REMOTE_OLLAMA_IP"; then
+            ollama_ip="$cur_ip"
+            echo "-> Ollama IP already populated: $ollama_ip"
+        else
+            read -p "Enter Remote Ollama IP: " ollama_ip
+        fi
+
+        if is_populated ".llm.ollama.REMOTE_OLLAMA_PORT"; then
+            ollama_port="$cur_port"
+            echo "-> Ollama Port already populated: $ollama_port"
+        else
+            read -p "Enter Remote Ollama Port [default: 11434]: " ollama_port
+            ollama_port="${ollama_port:-11434}"
+        fi
+
+        if is_populated ".llm.ollama.model"; then
+            ollama_model="$cur_model"
+            echo "-> Ollama Model already populated: $ollama_model"
+        else
+            read -p "Enter Ollama Model Name: " ollama_model
+        fi
     fi
+else
+    cur_host=$(echo "$CONFIG_JSON" | jq -r '.llm.strata.host // empty')
+    cur_port=$(echo "$CONFIG_JSON" | jq -r '.llm.strata.port // empty')
+    cur_model=$(echo "$CONFIG_JSON" | jq -r '.llm.strata.model // empty')
+    cur_key=$(echo "$CONFIG_JSON" | jq -r '.llm.strata.api_key // empty')
+
+    if [ "$UPDATE_MODE" == true ]; then
+        read -p "Enter Strata Server Host [${cur_host:-none}]: " strata_host
+        strata_host="${strata_host:-$cur_host}"
+
+        read -p "Enter Strata Server Port [${cur_port:-8080}]: " strata_port
+        strata_port="${strata_port:-${cur_port:-8080}}"
+
+        read -p "Enter Strata Model Name [${cur_model:-none}]: " strata_model
+        strata_model="${strata_model:-$cur_model}"
+
+        read -p "Enter Strata API Key [${cur_key:-none}]: " strata_api_key
+        strata_api_key="${strata_api_key:-$cur_key}"
+    else
+        if is_populated ".llm.strata.host"; then
+            strata_host="$cur_host"
+            echo "-> Strata host already populated: $strata_host"
+        else
+            read -p "Enter Strata Server Host: " strata_host
+        fi
+
+        if is_populated ".llm.strata.port"; then
+            strata_port="$cur_port"
+            echo "-> Strata port already populated: $strata_port"
+        else
+            read -p "Enter Strata Server Port [default: 8080]: " strata_port
+            strata_port="${strata_port:-8080}"
+        fi
+
+        if is_populated ".llm.strata.model"; then
+            strata_model="$cur_model"
+            echo "-> Strata model already populated: $strata_model"
+        else
+            read -p "Enter Strata Model Name: " strata_model
+        fi
+
+        if is_populated ".llm.strata.api_key"; then
+            strata_api_key="$cur_key"
+            echo "-> Strata API key already populated"
+        else
+            read -p "Enter Strata API Key [optional, blank for none]: " strata_api_key
+        fi
+    fi
+fi
+
+if [ "$llm_provider" == "ollama" ]; then
+    PROVIDER_JSON=$(jq -n \
+      --arg provider "$llm_provider" \
+      --arg ip "$ollama_ip" \
+      --arg port "$ollama_port" \
+      --arg model "$ollama_model" \
+      '{
+        llm: {
+          provider: $provider,
+          ollama: {
+            REMOTE_OLLAMA_IP: $ip,
+            REMOTE_OLLAMA_PORT: $port,
+            model: $model
+          }
+        }
+      }')
+else
+    PROVIDER_JSON=$(jq -n \
+      --arg provider "$llm_provider" \
+      --arg host "$strata_host" \
+      --arg port "$strata_port" \
+      --arg model "$strata_model" \
+      --arg api_key "$strata_api_key" \
+      '{
+        llm: {
+          provider: $provider,
+          strata: (({ host: $host, port: $port, model: $model }
+                   + (if $api_key == "" then {} else { api_key: $api_key } end))
+                  )
+        }
+      }')
 fi
 
 CONFIG_JSON=$(jq -n \
   --argjson existing "$CONFIG_JSON" \
-  --arg ip "$ollama_ip" \
-  --arg port "$ollama_port" \
-  --arg model "$ollama_model" \
-  '
-  {
-    ollama: {
-      REMOTE_OLLAMA_IP: $ip,
-      REMOTE_OLLAMA_PORT: $port,
-      model: $model
-    }
-  } as $new_ollama
-  | $existing * $new_ollama
-  ')
+  --argjson provider_json "$PROVIDER_JSON" \
+  '$existing * $provider_json')
 
 echo "=== Screenshot Configuration Check ==="
 
 # Build the set of fields this script manages. Any option that is no longer
 # produced here (e.g. a dropped tool's settings) is intentionally absent.
 MANAGED_JSON=$(jq -n \
-  --arg ip "$ollama_ip" \
-  --arg port "$ollama_port" \
-  --arg model "$ollama_model" \
+  --argjson provider_json "$PROVIDER_JSON" \
   --arg screenshot_tool "$SCREENSHOT_TOOL" \
-  '
-  {
-    ollama: {
-      REMOTE_OLLAMA_IP: $ip,
-      REMOTE_OLLAMA_PORT: $port,
-      model: $model
-    },
-    screenshot_tool: $screenshot_tool
-  }
-  ')
+  '$provider_json + { screenshot_tool: $screenshot_tool }')
 
 if [ "$UPDATE_MODE" == true ]; then
     # Update mode: redetect and replace with the managed set, pruning dropped options.

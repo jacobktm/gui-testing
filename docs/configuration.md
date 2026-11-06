@@ -12,20 +12,42 @@ cp config.example.json config.json
 
 ```json
 {
-  "ollama": {
-    "REMOTE_OLLAMA_IP": "192.168.1.100",
-    "REMOTE_OLLAMA_PORT": "11434",
-    "model": "qwen3-vl:8b"
+  "llm": {
+    "provider": "ollama",
+    "ollama": {
+      "REMOTE_OLLAMA_IP": "192.168.1.100",
+      "REMOTE_OLLAMA_PORT": "11434",
+      "model": "qwen3-vl:8b"
+    },
+    "strata": {
+      "host": "192.168.1.100",
+      "port": "8080",
+      "model": "<multimodal-gguf-name>"
+    }
   },
   "screenshot_tool": "cosmic-screenshot"
 }
 ```
 
+The `llm.provider` key selects which server the framework talks to:
+`ollama` uses the native Ollama API, `strata` uses a Strata
+(llama.cpp-based) server over its OpenAI-compatible `/v1/chat/completions`
+endpoint. Only the selected provider's section needs values; vision
+requires a multimodal model on either side (for Strata, a GGUF with its
+mmproj loaded server-side).
+
 | Key | Description | Default |
 |-----|-------------|---------|
-| `ollama.REMOTE_OLLAMA_IP` | Ollama server IP address | `127.0.0.1` |
-| `ollama.REMOTE_OLLAMA_PORT` | Ollama server port | `11434` |
-| `ollama.model` | Multimodal model name | `qwen3-vl:8b` |
+| `llm.provider` | LLM backend: `ollama` or `strata` | `ollama` |
+| `llm.ollama.REMOTE_OLLAMA_IP` | Ollama server IP | none — required for `ollama` |
+| `llm.ollama.REMOTE_OLLAMA_PORT` | Ollama server port | none — required (convention `11434`) |
+| `llm.ollama.model` | Ollama multimodal model | none — required for `ollama` |
+| `llm.ollama.timeout` | Per-request timeout (seconds) | `120` |
+| `llm.strata.host` | Strata server host | none — required for `strata` |
+| `llm.strata.port` | Strata server port | none — required (llama.cpp convention `8080`) |
+| `llm.strata.model` | Model name served by Strata | none — required for `strata` |
+| `llm.strata.api_key` | Optional `Bearer` token | none |
+| `llm.strata.timeout` | Per-request timeout (seconds) | `120` |
 | `screenshot_tool` | Screenshot backend | Auto-detected |
 
 ### Loading
@@ -44,10 +66,6 @@ Configuration is loaded by `harness.config.config`. It looks for `config.json` i
 | `GUI_TESTING_RESUMED` | Indicates resumed run | - |
 | `GUI_TESTING_SETUP_DONE` | Privileged setup completed | - |
 | `GUI_TESTING_KEEP_REBOOT_SETUP` | Don't clean up reboot setup | - |
-
-### Ollama (overrides config)
-
-Can be set via environment or passed to components. The config file takes precedence in most cases.
 
 ### Display/Desktop
 

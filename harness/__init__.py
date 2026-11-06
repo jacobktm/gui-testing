@@ -1,7 +1,8 @@
 """GUI automation test harness.
 
 Submodules are exposed lazily so ``import harness`` stays cheap and does not
-pull in optional/system dependencies (GTK, ollama) until a submodule is used::
+pull in optional/system dependencies (GTK, LLM provider SDKs) until a
+submodule is used::
 
     import harness
     harness.display.get_monitors()
@@ -26,7 +27,7 @@ __all__ = [
     "dotool",
     "gui",
     "imageutils",
-    "ollama_client",
+    "llm_client",
     "reboot",
     "report",
     "screenshots",
@@ -41,7 +42,7 @@ if TYPE_CHECKING:
         dotool,
         gui,
         imageutils,
-        ollama_client,
+        llm_client,
         reboot,
         report,
         screenshots,

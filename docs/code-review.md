@@ -395,9 +395,12 @@ resume unit still rides on the next real run: check for
   battery `.325` → balanced `.39` → performance `.35`; every other layout is
   monotonic, so performance/balanced look swapped. **[verify-on-hw]** against a
   real capture.
-- [ ] **medium** `harness/ollama_client/ollama_client.py:30,50` and
+- [ ] ~~**medium** `harness/ollama_client/ollama_client.py:30,50` and
   `set_of_mark.py:169-170` — no request timeout on either VLM path → a wedged
-  Ollama hangs the suite indefinitely.
+  Ollama hangs the suite indefinitely.~~ *(fixed 2026-11-06: provider refactor —
+  `harness/llm_client/` clients take a `timeout` config key (default 120 s);
+  the ollama SDK gets it via `Client(timeout=...)`, Strata via
+  `urlopen(timeout=...)`; SoM no longer talks to a provider directly.)*
 - [ ] **medium** `harness/dotool/dotool.py:37-55,134-144` — `GuiDriver(dtproc=None)`
   spawns a fresh dotool process and uinput device per click; `proc.wait()` has no
   timeout (can hang the suite); `key(x, press=False)` only ever presses.
@@ -495,11 +498,17 @@ resume unit still rides on the next real run: check for
 - [ ] **low** `harness/config/config.py:81-89` — unreachable duplicate block after
   `return`; `ollama_config()` prints `ERROR:` and returns `{}` on a missing file
   while `json.load` is uncaught on a malformed one; `set_ollama_*` rewrite
-  `config.json` wholesale.
-- [ ] **low** `harness/ollama_client/ollama_client.py:33` mutable default arg
+  `config.json` wholesale. *(fixed 2026-11-06: duplicate block deleted;
+  `set_ollama_*` setters removed — setup.sh owns config writes via jq; config
+  now carries an `llm` section with `provider` + per-provider subsections.
+  Malformed-JSON `json.load` still uncaught — deliberately left.)*
+- [ ] ~~**low** `harness/ollama_client/ollama_client.py:33` mutable default arg
   `images: list = []`; `:62-64` `__main__` block hard-codes a personal screenshot
   path; `connect()` is never called automatically, so `send_message` returns `None`
-  (a silent-failure chain into best-effort passes).
+  (a silent-failure chain into best-effort passes).~~ *(fixed 2026-11-06:
+  `harness/llm_client/` uses `images=None`; no `__main__` block; the factory
+  `get_llm_client()` calls `connect()` itself, and `GuiDriver.__init__` uses the
+  factory.)*
 
 ---
 
@@ -603,9 +612,10 @@ Docs verified wrong:
 - [ ] `docs/adding-applications.md:272` example
   `SIMPLE_SELECTION.render(item=…, choices=…)` raises — `extra_instructions` is
   required (`harness/llm/prompts/templates.py:19-23`, enforced at `base.py:14-19`).
-- [ ] `docs/configuration.md:26-28` claims ollama defaults that do not exist
+- [ ] ~~`docs/configuration.md:26-28` claims ollama defaults that do not exist
   (`harness/ollama_client/ollama_client.py:18-20,27-29` no-op with
-  "ERROR: No IP or port.").
+  "ERROR: No IP or port.").~~ *(fixed 2026-11-06: configuration.md rewritten
+  around the `llm` provider section with accurate required/default columns.)*
 - [ ] `README.md:74-85`, `docs/configuration.md:14-21`, `config.example.json:7`
   hard-code `"screenshot_tool": "cosmic-screenshot"` — wrong for GNOME; only
   `setup.sh:50-58,275-289` auto-detects. Valid values:
@@ -743,8 +753,9 @@ These need a real-machine check before being "fixed" or dismissed:
 
 **P2 — reliability and cost**
 
-9. [ ] Constrain VLM decoding instead of regex-scraping; add timeouts to both
-   Ollama paths.
+9. [ ] Constrain VLM decoding instead of regex-scraping; ~~add timeouts to both
+   Ollama paths.~~ *(timeouts done 2026-11-06 via `harness/llm_client/` — both
+   providers honor a `timeout` config key; decoding constraint still open.)*
 10. [ ] Fix the SoM prompt to use `target_description`; run OCR once per sheet
     rather than per contour.
 11. [ ] Coordinates: use `DisplayCrop.origin` when mapping to dotool; clamp

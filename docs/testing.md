@@ -210,7 +210,7 @@ Workflows and harness code often print debug info to stdout/stderr which is capt
 
 For CI/headless environments:
 - Use `RUN_DESTRUCTIVE_TESTS=0` to skip reboot/GUI tests
-- Ensure Ollama is accessible
+- Ensure the configured LLM server (Ollama or Strata) is accessible
 - May need virtual display (Xvfb) for GUI tests
 - Some tests require physical hardware (backlight, GPU switching)
 
@@ -219,5 +219,5 @@ For CI/headless environments:
 - GUI tests are slow (screenshot + LLM inference)
 - Use CLI tests where possible
 - Run specific tests during development
-- Ollama inference time depends on model and hardware
+- LLM inference time depends on model and hardware
 - Set-of-Mark element detection is relatively fast

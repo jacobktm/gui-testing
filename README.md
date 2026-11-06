@@ -4,7 +4,7 @@ A general-purpose, vision-driven GUI/CLI test automation framework for Linux des
 
 ## Features
 
-- **Vision-based UI automation** - Set-of-Mark (SoM) detection using OpenCV + multimodal LLM (Ollama) to identify and click UI elements without brittle selectors.
+- **Vision-based UI automation** - Set-of-Mark (SoM) detection using OpenCV + a multimodal LLM (Ollama or Strata) to identify and click UI elements without brittle selectors.
 - **Cross-desktop support** - Works on GNOME (Pop!_OS 22.04, Ubuntu) and COSMIC (Pop!_OS 24.04) with desktop-specific screenshot/input backends.
 - **Input injection** - Uses `dotool` for mouse/keyboard input on both X11 and Wayland.
 - **Artifact collection** - Per-run artifacts with manifests, retention policies, and automatic reporting.
@@ -19,7 +19,7 @@ gui-testing/
 ├── harness/           # Framework core (generic, reusable)
 │   ├── screenshots/   # Screenshot capture (cosmic-screenshot, gnome-dotool)
 │   ├── gui/           # GuiDriver, Set-of-Mark, coordinates
-│   ├── ollama_client/ # LLM integration
+│   ├── llm_client/    # LLM integration (Ollama/Strata providers)
 │   ├── dotool/        # Input injection
 │   ├── detection/     # Response parsing
 │   ├── artifacts/     # Run artifacts, manifests, retention
@@ -48,7 +48,7 @@ gui-testing/
 - Linux (Wayland or X11)
 - Python 3.11+
 - `dotool` (built/installed by setup)
-- Ollama server with a multimodal model (e.g., `qwen3-vl:8b`)
+- Ollama server with a multimodal model (e.g., `qwen3-vl:8b`) **or** a Strata (OpenAI-compatible) server serving a multimodal GGUF with mmproj
 - Desktop environment: GNOME or COSMIC
 - For reboot tests: sudo access (setup.sh configures passwordless sudo temporarily)
 
@@ -65,7 +65,7 @@ This will:
 2. Install system dependencies (including building `dotool`)
 3. Create a Python virtual environment
 4. Install Python dependencies
-5. Prompt for configuration (Ollama host/port/model)
+5. Prompt for configuration (LLM provider: Ollama or Strata, plus host/port/model)
 
 ### 2. Configure
 
@@ -76,10 +76,18 @@ cp config.example.json config.json
 
 ```json
 {
-  "ollama": {
-    "REMOTE_OLLAMA_IP": "192.168.1.100",
-    "REMOTE_OLLAMA_PORT": "11434",
-    "model": "qwen3-vl:8b"
+  "llm": {
+    "provider": "ollama",
+    "ollama": {
+      "REMOTE_OLLAMA_IP": "192.168.1.100",
+      "REMOTE_OLLAMA_PORT": "11434",
+      "model": "qwen3-vl:8b"
+    },
+    "strata": {
+      "host": "192.168.1.100",
+      "port": "8080",
+      "model": "<multimodal-gguf-name>"
+    }
   },
   "screenshot_tool": "cosmic-screenshot"
 }

@@ -8,7 +8,7 @@ from ..detection import parse_detection, to_dotool_normalized
 from .set_of_mark import generate_set_of_mark
 from .set_of_mark import detect_element_coords
 from ..dotool import click, mouseto
-from ..ollama_client import Ollama
+from ..llm_client import get_llm_client
 from ..screenshots import capture, crop_active_display
 
 
@@ -19,11 +19,7 @@ class GuiDriver:
     def __init__(self, artifacts=None, dtproc=None):
         self.artifacts = artifacts
         self.dtproc = dtproc
-        self.ollama = Ollama()
-        try:
-            self.ollama.connect()
-        except Exception:
-            pass
+        self.llm = get_llm_client()
 
     def go_to(self, coords: tuple[float, float], dtproc=None):
         proc = dtproc if dtproc is not None else self.dtproc
@@ -47,8 +43,8 @@ class GuiDriver:
     ) -> tuple[float, float] | None:
         """Use Set-of-Mark to find normalized coordinates of a UI element.
 
-        Detects UI elements via OpenCV, annotates with IDs, asks Ollama
-        which ID matches the target, returns normalized (x, y).
+        Detects UI elements via OpenCV, annotates with IDs, asks the
+        vision LLM which ID matches the target, returns normalized (x, y).
         """
         out_dir = out_dir or "/tmp/opencode/gui"
         os.makedirs(out_dir, exist_ok=True)
@@ -78,14 +74,10 @@ class GuiDriver:
             _t.sleep(5)  # Wait for screenshot notification.
 
             if crop is not None:
-                from ..config import ollama_config
-                cfg = ollama_config()
                 coords = detect_element_coords(
                     str(crop.path),
                     target_description,
-                    ollama_ip=cfg.get("REMOTE_OLLAMA_IP", "127.0.0.1"),
-                    ollama_port=cfg.get("REMOTE_OLLAMA_PORT", "11434"),
-                    ollama_model=cfg.get("model", "qwen3-vl:8b"),
+                    llm=self.llm,
                 )
                 if coords is not None:
                     if self.artifacts is not None and item_id:
@@ -121,8 +113,9 @@ class GuiDriver:
     ) -> str | None:
         """Use Set-of-Mark to detect the active power profile.
 
-        Detects UI elements via OpenCV, annotates with IDs, asks Ollama
-        which ID is currently selected/highlighted and what its label is.
+        Detects UI elements via OpenCV, annotates with IDs, asks the
+        vision LLM which ID is currently selected/highlighted and what
+        its label is.
         Returns the normalized profile name or None.
 
         ``target``, when given, must be matched before detection is accepted;
@@ -161,13 +154,13 @@ class GuiDriver:
                 print(f"[detect_power_profile_som] attempt={attempt} no UI elements detected, retrying...", file=sys.stderr, flush=True)
                 continue
 
-            # Ask Ollama which ID is selected and what its label is.
+            # Ask the vision LLM which ID is selected and what its label is.
             prompt = "This screenshot has green numbered boxes around UI elements. One power profile option is currently selected or highlighted (it may have a checkmark, different color, or bold text). Which number is next to the selected profile? Also tell me the label of that element. Format: number,label (e.g., 5,Balanced). Return ONLY that."
 
             response = None
             try:
-                if self.ollama.client and self.ollama.model:
-                    response = self.ollama.send_message(prompt, [som_path])
+                if self.llm.client and self.llm.model:
+                    response = self.llm.send_message(prompt, [som_path])
             except Exception:
                 response = None
 
@@ -293,13 +286,13 @@ class GuiDriver:
             response = None
             result = None
             for rep in range(max_reprompts_same_image):
-                print(f"[capture_and_detect] calling LLM with model={self.ollama.model} (reprompt={rep}, shot_attempt={shot_attempt})", file=sys.stderr, flush=True)
+                print(f"[capture_and_detect] calling LLM with model={self.llm.model} (reprompt={rep}, shot_attempt={shot_attempt})", file=sys.stderr, flush=True)
                 try:
-                    if self.ollama.client and self.ollama.model:
-                        response = self.ollama.send_message(prompt, [str(crop.path)])
+                    if self.llm.client and self.llm.model:
+                        response = self.llm.send_message(prompt, [str(crop.path)])
                         print(f"[capture_and_detect] LLM response: {response}", file=sys.stderr, flush=True)
                     else:
-                        print(f"[capture_and_detect] Ollama not connected: client={self.ollama.client} model={self.ollama.model}", file=sys.stderr, flush=True)
+                        print(f"[capture_and_detect] LLM not connected: client={self.llm.client} model={self.llm.model}", file=sys.stderr, flush=True)
                         response = None
                 except Exception as e:
                     print(f"[capture_and_detect] LLM FAILED: {e}", file=sys.stderr, flush=True)
